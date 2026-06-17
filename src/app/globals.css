@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg0: #0F1623;
+  --bg1: #151E2D;
+  --bg2: #1C2A3E;
+  --bg3: #243044;
+  --amber: #F59E0B;
+  --t1: rgba(255,255,255,0.85);
+  --t2: rgba(255,255,255,0.5);
+  --t3: rgba(255,255,255,0.25);
+  --border: rgba(255,255,255,0.07);
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg0); color: var(--t1); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+input, select, textarea {
+  background: var(--bg3) !important;
+  border: 0.5px solid rgba(255,255,255,0.12) !important;
+  color: var(--t1) !important;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 13px;
+  outline: none;
+  width: 100%;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--amber) !important; }
+input::placeholder, textarea::placeholder { color: var(--t3) !important; }
+select option { background: #1C2A3E; color: rgba(255,255,255,0.85); }
+
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  .no-print { display: none !important; }
+}

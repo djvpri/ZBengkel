@@ -1,0 +1,217 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  KASIR
+  MEKANIK
+}
+
+enum JenisKendaraan {
+  MOTOR
+  MOBIL
+  ALAT_BERAT
+}
+
+enum StatusWO {
+  ANTRI
+  PROSES
+  SELESAI
+  BAYAR
+}
+
+enum KategoriPart {
+  MOTOR
+  MOBIL
+  ALAT_BERAT
+  UMUM
+}
+
+enum MetodeBayar {
+  TUNAI
+  TRANSFER
+  QRIS
+  DEBIT
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(KASIR)
+  hp        String?
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mekanikWO WorkOrderMekanik[]
+  sessions  Session[]
+  accounts  Account[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  @@unique([identifier, token])
+}
+
+model Kendaraan {
+  id        String         @id @default(cuid())
+  plat      String         @unique
+  jenis     JenisKendaraan
+  merk      String?
+  tipe      String?
+  tahun     Int?
+  warna     String?
+  pemilik   String
+  hp        String?
+  alamat    String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  workOrders WorkOrder[]
+}
+
+model Mekanik {
+  id          String   @id @default(cuid())
+  nama        String
+  spesialis   String   @default("UMUM")
+  hp          String?
+  aktif       Boolean  @default(true)
+  totalSelesai Int     @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workOrders WorkOrderMekanik[]
+}
+
+model WorkOrder {
+  id          String         @id @default(cuid())
+  nomorWO     String         @unique
+  kendaraanId String
+  keluhan     String
+  catatan     String?
+  estimasi    Float          @default(0)
+  status      StatusWO       @default(ANTRI)
+  waktuMasuk  DateTime       @default(now())
+  waktuSelesai DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  kendaraan   Kendaraan        @relation(fields: [kendaraanId], references: [id])
+  mekaniks    WorkOrderMekanik[]
+  transaksi   Transaksi?
+}
+
+model WorkOrderMekanik {
+  id          String    @id @default(cuid())
+  workOrderId String
+  mekanikId   String
+  userId      String?
+
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  mekanik     Mekanik   @relation(fields: [mekanikId], references: [id])
+  user        User?     @relation(fields: [userId], references: [id])
+}
+
+model SparePart {
+  id        String       @id @default(cuid())
+  kode      String?      @unique
+  nama      String
+  kategori  KategoriPart @default(UMUM)
+  satuan    String       @default("pcs")
+  stok      Float        @default(0)
+  minStok   Float        @default(5)
+  hargaBeli Float        @default(0)
+  hargaJual Float        @default(0)
+  keterangan String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  transaksiItems TransaksiItem[]
+}
+
+model Jasa {
+  id        String   @id @default(cuid())
+  nama      String
+  kategori  String   @default("UMUM")
+  harga     Float    @default(0)
+  deskripsi String?
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transaksiItems TransaksiItem[]
+}
+
+model Transaksi {
+  id          String      @id @default(cuid())
+  nomorTrx    String      @unique
+  workOrderId String      @unique
+  subtotal    Float
+  diskon      Float       @default(0)
+  total       Float
+  metode      MetodeBayar @default(TUNAI)
+  catatan     String?
+  createdAt   DateTime    @default(now())
+
+  workOrder WorkOrder       @relation(fields: [workOrderId], references: [id])
+  items     TransaksiItem[]
+}
+
+model TransaksiItem {
+  id           String     @id @default(cuid())
+  transaksiId  String
+  tipe         String     // 'JASA' | 'PART'
+  jasaId       String?
+  sparePartId  String?
+  nama         String
+  qty          Float
+  harga        Float
+  subtotal     Float
+
+  transaksi    Transaksi   @relation(fields: [transaksiId], references: [id], onDelete: Cascade)
+  jasa         Jasa?       @relation(fields: [jasaId], references: [id])
+  sparePart    SparePart?  @relation(fields: [sparePartId], references: [id])
+}
+
+model NotifikasiLog {
+  id        String   @id @default(cuid())
+  tipe      String
+  pesan     String
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+}
