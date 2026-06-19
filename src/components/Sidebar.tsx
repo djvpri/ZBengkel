@@ -16,14 +16,14 @@ const menuAdmin: { href: string; label: string; icon: string; adminOnly?: boolea
   { href: '/users', label: 'Kelola User', icon: '👥', adminOnly: true },
 ]
 
-const menuKasir = [
+const menuKasir: { href: string; label: string; icon: string; adminOnly?: boolean }[] = [
   { href: '/', label: 'Dashboard', icon: '⊞' },
   { href: '/wo', label: 'Work Order', icon: '📋' },
   { href: '/kasir', label: 'Kasir', icon: '💰' },
   { href: '/riwayat', label: 'Riwayat', icon: '📜' },
 ]
 
-const menuMekanik = [
+const menuMekanik: { href: string; label: string; icon: string; adminOnly?: boolean }[] = [
   { href: '/', label: 'Dashboard', icon: '⊞' },
   { href: '/wo', label: 'Work Order Saya', icon: '📋' },
 ]
