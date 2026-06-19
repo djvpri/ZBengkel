@@ -3,7 +3,7 @@ import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-const menuAdmin = [
+const menuAdmin: { href: string; label: string; icon: string; adminOnly?: boolean }[] = [
   { href: '/', label: 'Dashboard', icon: '⊞' },
   { href: '/wo', label: 'Work Order', icon: '📋' },
   { href: '/kasir', label: 'Kasir', icon: '💰' },
