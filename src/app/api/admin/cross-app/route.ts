@@ -20,12 +20,26 @@ export async function GET(req: NextRequest) {
         hp: true,
         aktif: true,
         faceId: true,
+        tenantId: true,
         createdAt: true,
       },
       orderBy: { createdAt: 'desc' },
     })
 
-    return NextResponse.json({ users })
+    // Get tenant plan info
+    const tenants = await prisma.tenant.findMany({
+      select: {
+        id: true,
+        namaToko: true,
+        slug: true,
+        plan: true,
+        planExpires: true,
+        isActive: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    return NextResponse.json({ users, tenants })
   } catch (error) {
     console.error('Cross-app list users error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -75,6 +89,13 @@ export async function POST(req: NextRequest) {
         switch (action) {
           case 'updateRole':
             await prisma.user.update({ where: { email }, data: { role: data.role } })
+            return NextResponse.json({ success: true })
+
+          case 'updatePlan':
+            await prisma.tenant.update({
+              where: { id: data.tenantId },
+              data: { plan: data.plan, planExpires: data.planExpires ? new Date(data.planExpires) : null },
+            })
             return NextResponse.json({ success: true })
 
           case 'updateActive':
