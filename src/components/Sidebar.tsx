@@ -32,6 +32,7 @@ export default function Sidebar() {
   const { data: session } = useSession()
   const pathname = usePathname()
   const role = (session?.user as any)?.role
+  const tenantNama = (session?.user as any)?.tenantNama
   const menu = role === 'ADMIN' ? menuAdmin : role === 'KASIR' ? menuKasir : menuMekanik
   const initials = session?.user?.name?.split(' ').map((n: string) => n[0]).slice(0, 2).join('') || '?'
 
@@ -39,7 +40,7 @@ export default function Sidebar() {
     <aside style={{ width: 210, background: 'var(--bg1)', borderRight: '0.5px solid var(--border)', display: 'flex', flexDirection: 'column', flexShrink: 0, minHeight: '100vh' }}>
       <div style={{ padding: '16px 14px 12px', borderBottom: '0.5px solid var(--border)' }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--amber)' }}>🔧 BENGKEL POS</div>
-        <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 2 }}>Manajemen Bengkel Profesional</div>
+        {tenantNama && <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 2 }}>{tenantNama}</div>}
       </div>
       <nav style={{ flex: 1, padding: '8px 0', overflowY: 'auto' }}>
         {menu.filter(m => !m.adminOnly || role === 'ADMIN').map(m => (

@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -23,8 +24,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg0)' }}>
       <div style={{ width: 380, background: 'var(--bg1)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: 36 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ fontSize: 28, marginBottom: 6 }}>🔧</div>
-          <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--amber)' }}>BENGKEL POS</div>
+          <Link href="/landing" style={{ textDecoration: 'none' }}>
+            <div style={{ fontSize: 28, marginBottom: 6 }}>🔧</div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: 'var(--amber)' }}>BENGKEL POS</div>
+          </Link>
           <div style={{ fontSize: 12, color: 'var(--t3)', marginTop: 4 }}>Sistem Manajemen Bengkel Profesional</div>
         </div>
         <form onSubmit={handleLogin}>
@@ -41,7 +44,10 @@ export default function LoginPage() {
             {loading ? 'Masuk...' : 'Masuk'}
           </button>
         </form>
-        <div style={{ marginTop: 24, padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, fontSize: 11, color: 'var(--t3)' }}>
+        <div style={{ marginTop: 16, textAlign: 'center', fontSize: 12, color: 'var(--t3)' }}>
+          Belum punya akun? <Link href="/register" style={{ color: 'var(--amber)', textDecoration: 'none' }}>Daftar Gratis</Link>
+        </div>
+        <div style={{ marginTop: 16, padding: '12px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, fontSize: 11, color: 'var(--t3)' }}>
           <div style={{ fontWeight: 500, marginBottom: 6, color: 'var(--t2)' }}>Akun Demo:</div>
           <div>Admin: admin@bengkel.com / admin123</div>
           <div>Kasir: kasir@bengkel.com / kasir123</div>

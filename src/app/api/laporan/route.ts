@@ -6,47 +6,78 @@ import prisma from '@/lib/prisma'
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tenantId = (session.user as any).tenantId
+  if (!tenantId) return NextResponse.json({ error: 'No tenant' }, { status: 403 })
+
   const { searchParams } = new URL(req.url)
-  const bulan = searchParams.get('bulan') || new Date().toISOString().slice(0, 7)
-  const [year, month] = bulan.split('-').map(Number)
-  const start = new Date(year, month - 1, 1)
-  const end = new Date(year, month, 0, 23, 59, 59)
+  const from = searchParams.get('from')
+  const to = searchParams.get('to')
 
-  const [transaksi, woSelesai, stokKritis] = await Promise.all([
-    prisma.transaksi.findMany({
-      where: { createdAt: { gte: start, lte: end } },
-      include: { workOrder: { include: { kendaraan: true } }, items: true },
-      orderBy: { createdAt: 'asc' },
-    }),
-    prisma.workOrder.count({ where: { status: { in: ['SELESAI', 'BAYAR'] }, updatedAt: { gte: start, lte: end } } }),
-    prisma.sparePart.findMany({ where: { stok: { lte: 5 } } }),
-  ])
+  const dateFilter: any = {}
+  if (from) dateFilter.gte = new Date(from)
+  if (to) dateFilter.lte = new Date(to + 'T23:59:59')
 
-  const omzet = transaksi.reduce((a, b) => a + b.total, 0)
-  const avg = transaksi.length ? omzet / transaksi.length : 0
+  const where: any = { tenantId }
+  if (from || to) where.createdAt = dateFilter
 
-  // Omzet per hari
-  const harian: Record<string, number> = {}
+  // Total transaksi
+  const transaksi = await prisma.transaksi.findMany({
+    where,
+    include: {
+      workOrder: { include: { kendaraan: true, mekaniks: { include: { mekanik: true } } } },
+      items: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  const totalOmzet = transaksi.reduce((sum, t) => sum + t.total, 0)
+  const jumlahTransaksi = transaksi.length
+  const rataRata = jumlahTransaksi > 0 ? totalOmzet / jumlahTransaksi : 0
+
+  // Breakdown by jenis kendaraan
+  const breakdown: Record<string, { jumlah: number; omzet: number }> = {}
   for (const t of transaksi) {
-    const d = t.createdAt.toISOString().split('T')[0]
-    harian[d] = (harian[d] || 0) + t.total
+    const jenis = t.workOrder?.kendaraan?.jenis || 'LAINNYA'
+    if (!breakdown[jenis]) breakdown[jenis] = { jumlah: 0, omzet: 0 }
+    breakdown[jenis].jumlah++
+    breakdown[jenis].omzet += t.total
   }
 
-  // Per jenis kendaraan
-  const perJenis: Record<string, number> = { MOTOR: 0, MOBIL: 0, ALAT_BERAT: 0 }
+  // Top mekanik
+  const mekanikCount: Record<string, { nama: string; jumlah: number; omzet: number }> = {}
   for (const t of transaksi) {
-    const j = t.workOrder.kendaraan.jenis
-    perJenis[j] = (perJenis[j] || 0) + t.total
-  }
-
-  // Top jasa
-  const jasaCount: Record<string, number> = {}
-  for (const t of transaksi) {
-    for (const item of t.items) {
-      jasaCount[item.nama] = (jasaCount[item.nama] || 0) + item.subtotal
+    for (const wm of t.workOrder?.mekaniks || []) {
+      const id = wm.mekanikId
+      if (!mekanikCount[id]) mekanikCount[id] = { nama: wm.mekanik?.nama || '-', jumlah: 0, omzet: 0 }
+      mekanikCount[id].jumlah++
+      mekanikCount[id].omzet += t.total
     }
   }
-  const topJasa = Object.entries(jasaCount).sort((a, b) => b[1] - a[1]).slice(0, 7).map(([nama, total]) => ({ nama, total }))
 
-  return NextResponse.json({ omzet, jumlahTrx: transaksi.length, avg, woSelesai, perJenis, harian, topJasa, stokKritis, transaksi })
+  // Top spare part
+  const partCount: Record<string, { nama: string; qty: number; omzet: number }> = {}
+  for (const t of transaksi) {
+    for (const item of t.items) {
+      if (item.tipe === 'PART') {
+        const id = item.sparePartId || item.nama
+        if (!partCount[id]) partCount[id] = { nama: item.nama, qty: 0, omzet: 0 }
+        partCount[id].qty += item.qty
+        partCount[id].omzet += item.subtotal
+      }
+    }
+  }
+
+  return NextResponse.json({
+    summary: {
+      totalOmzet,
+      jumlahTransaksi,
+      rataRata,
+      from: from || null,
+      to: to || null,
+    },
+    breakdown,
+    topMekanik: Object.values(mekanikCount).sort((a, b) => b.jumlah - a.jumlah).slice(0, 10),
+    topPart: Object.values(partCount).sort((a, b) => b.qty - a.qty).slice(0, 10),
+    transaksi,
+  })
 }

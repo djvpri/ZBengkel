@@ -4,18 +4,42 @@ import { authOptions } from '@/lib/auth'
 import prisma from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  const data = await prisma.user.findMany({ select: { id: true, name: true, email: true, role: true, hp: true, aktif: true, createdAt: true }, orderBy: { name: 'asc' } })
-  return NextResponse.json(data)
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tenantId = (session.user as any).tenantId
+  if (!tenantId) return NextResponse.json({ error: 'No tenant' }, { status: 403 })
+
+  const users = await prisma.user.findMany({
+    where: { tenantId },
+    select: { id: true, name: true, email: true, role: true, hp: true, aktif: true, createdAt: true },
+    orderBy: { createdAt: 'desc' },
+  })
+  return NextResponse.json(users)
 }
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
-  if (!session || (session.user as any).role !== 'ADMIN') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const tenantId = (session.user as any).tenantId
+  if (!tenantId) return NextResponse.json({ error: 'No tenant' }, { status: 403 })
+  if ((session.user as any).role !== 'ADMIN') {
+    return NextResponse.json({ error: 'Hanya admin' }, { status: 403 })
+  }
+
   const body = await req.json()
-  const hash = await bcrypt.hash(body.password || 'bengkel123', 10)
-  const u = await prisma.user.create({ data: { name: body.name, email: body.email, password: hash, role: body.role, hp: body.hp } })
-  return NextResponse.json({ id: u.id, name: u.name, email: u.email, role: u.role })
+  const { name, email, password, role, hp } = body
+  if (!name || !email || !password) {
+    return NextResponse.json({ error: 'Nama, email, password wajib' }, { status: 400 })
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email } })
+  if (existing) return NextResponse.json({ error: 'Email sudah terdaftar' }, { status: 400 })
+
+  const hashed = await bcrypt.hash(password, 10)
+  const user = await prisma.user.create({
+    data: { name, email, password: hashed, role: role || 'KASIR', hp, tenantId },
+    select: { id: true, name: true, email: true, role: true },
+  })
+  return NextResponse.json(user, { status: 201 })
 }

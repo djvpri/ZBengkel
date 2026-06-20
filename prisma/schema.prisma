@@ -40,6 +40,49 @@ enum MetodeBayar {
   DEBIT
 }
 
+model Tenant {
+  id          String   @id @default(cuid())
+  namaToko    String
+  slug        String   @unique
+  alamat      String?
+  telepon     String?
+  logo        String?
+  plan        String   @default("free")
+  planExpires DateTime?
+  isActive    Boolean  @default(true)
+  settings    Json?
+  createdAt   DateTime @default(now())
+
+  users       User[]
+  kendaraan   Kendaraan[]
+  mekanik     Mekanik[]
+  sparePart   SparePart[]
+  jasa        Jasa[]
+  workOrders  WorkOrder[]
+  transaksi   Transaksi[]
+}
+
+model Plan {
+  id           String   @id
+  nama         String
+  hargaBulan   Int
+  hargaTahun   Int
+  maxWorkOrder Int
+  maxSparePart Int
+  maxMekanik   Int
+  fitur        String[]
+  isActive     Boolean  @default(true)
+  urutan       Int
+}
+
+model TenantCounter {
+  tenantId   String
+  bulan      String
+  jumlahWO   Int      @default(0)
+  jumlahPart Int      @default(0)
+  @@id([tenantId, bulan])
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -48,12 +91,14 @@ model User {
   role      Role     @default(KASIR)
   hp        String?
   aktif     Boolean  @default(true)
+  tenantId  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  mekanikWO WorkOrderMekanik[]
-  sessions  Session[]
-  accounts  Account[]
+  tenant      Tenant?            @relation(fields: [tenantId], references: [id])
+  mekanikWO   WorkOrderMekanik[]
+  sessions    Session[]
+  accounts    Account[]
 }
 
 model Account {
@@ -99,38 +144,44 @@ model Kendaraan {
   pemilik   String
   hp        String?
   alamat    String?
+  tenantId  String?
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
-  workOrders WorkOrder[]
+  tenant      Tenant?     @relation(fields: [tenantId], references: [id])
+  workOrders  WorkOrder[]
 }
 
 model Mekanik {
-  id          String   @id @default(cuid())
-  nama        String
-  spesialis   String   @default("UMUM")
-  hp          String?
-  aktif       Boolean  @default(true)
-  totalSelesai Int     @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  nama         String
+  spesialis    String   @default("UMUM")
+  hp           String?
+  aktif        Boolean  @default(true)
+  totalSelesai Int      @default(0)
+  tenantId     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  workOrders WorkOrderMekanik[]
+  tenant      Tenant?           @relation(fields: [tenantId], references: [id])
+  workOrders  WorkOrderMekanik[]
 }
 
 model WorkOrder {
-  id          String         @id @default(cuid())
-  nomorWO     String         @unique
-  kendaraanId String
-  keluhan     String
-  catatan     String?
-  estimasi    Float          @default(0)
-  status      StatusWO       @default(ANTRI)
-  waktuMasuk  DateTime       @default(now())
+  id           String         @id @default(cuid())
+  nomorWO      String         @unique
+  kendaraanId  String
+  keluhan      String
+  catatan      String?
+  estimasi     Float          @default(0)
+  status       StatusWO       @default(ANTRI)
+  waktuMasuk   DateTime       @default(now())
   waktuSelesai DateTime?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  tenantId     String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
   kendaraan   Kendaraan        @relation(fields: [kendaraanId], references: [id])
   mekaniks    WorkOrderMekanik[]
   transaksi   Transaksi?
@@ -148,19 +199,21 @@ model WorkOrderMekanik {
 }
 
 model SparePart {
-  id        String       @id @default(cuid())
-  kode      String?      @unique
-  nama      String
-  kategori  KategoriPart @default(UMUM)
-  satuan    String       @default("pcs")
-  stok      Float        @default(0)
-  minStok   Float        @default(5)
-  hargaBeli Float        @default(0)
-  hargaJual Float        @default(0)
+  id         String       @id @default(cuid())
+  kode       String?      @unique
+  nama       String
+  kategori   KategoriPart @default(UMUM)
+  satuan     String       @default("pcs")
+  stok       Float        @default(0)
+  minStok    Float        @default(5)
+  hargaBeli  Float        @default(0)
+  hargaJual  Float        @default(0)
   keterangan String?
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  tenantId   String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
 
+  tenant         Tenant?          @relation(fields: [tenantId], references: [id])
   transaksiItems TransaksiItem[]
 }
 
@@ -171,9 +224,11 @@ model Jasa {
   harga     Float    @default(0)
   deskripsi String?
   aktif     Boolean  @default(true)
+  tenantId  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  tenant         Tenant?          @relation(fields: [tenantId], references: [id])
   transaksiItems TransaksiItem[]
 }
 
@@ -186,16 +241,18 @@ model Transaksi {
   total       Float
   metode      MetodeBayar @default(TUNAI)
   catatan     String?
+  tenantId    String
   createdAt   DateTime    @default(now())
 
-  workOrder WorkOrder       @relation(fields: [workOrderId], references: [id])
+  tenant    Tenant           @relation(fields: [tenantId], references: [id])
+  workOrder WorkOrder        @relation(fields: [workOrderId], references: [id])
   items     TransaksiItem[]
 }
 
 model TransaksiItem {
   id           String     @id @default(cuid())
   transaksiId  String
-  tipe         String     // 'JASA' | 'PART'
+  tipe         String
   jasaId       String?
   sparePartId  String?
   nama         String
