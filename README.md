@@ -88,3 +88,4 @@ Railway akan otomatis menjalankan:
 npm run build  →  prisma generate + next build
 npm start      →  next start
 ```
+# redeploy
