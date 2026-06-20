@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { Providers } from './providers'
 import PWARegister from '@/components/PWARegister'
+import StatusBar from '@/components/StatusBar'
 
 export const metadata: Metadata = {
   title: 'Bengkel POS — Sistem Manajemen Bengkel',
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#F59E0B',
+  themeColor: '#0F1623',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -34,7 +35,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <PWARegister />
-        <Providers>{children}</Providers>
+        <Providers>
+          <StatusBar />
+          {children}
+        </Providers>
       </body>
     </html>
   )

@@ -6,6 +6,9 @@ import Sidebar, { HamburgerButton } from '@/components/Sidebar'
 import Modal from '@/components/Modal'
 import Toast from '@/components/Toast'
 import { rp, fmtDateTime } from '@/lib/utils'
+import { saveWorkOrder, getWorkOrders, addToSyncQueue, markSynced } from '@/lib/db-local'
+import { isOnline } from '@/lib/sync-manager'
+import { useOffline } from '@/lib/offline-context'
 
 const Btn = ({ onClick, children, variant = 'default', disabled }: any) => {
   const styles: any = {
@@ -21,6 +24,7 @@ const Btn = ({ onClick, children, variant = 'default', disabled }: any) => {
 export default function WOPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const { isOnline: isOnlineStatus } = useOffline()
   const [wos, setWOs] = useState<any[]>([])
   const [mekaniks, setMekaniks] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,6 +37,8 @@ export default function WOPage() {
   const [form, setForm] = useState({ plat: '', jenis: 'MOTOR', merk: '', tipe: '', tahun: '', warna: '', pemilik: '', hp: '', alamat: '', keluhan: '', catatan: '', estimasi: '', mekanikIds: [] as string[] })
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [tenantId, setTenantId] = useState<string>('')
+  const [isOfflineData, setIsOfflineData] = useState(false)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768)
@@ -41,40 +47,182 @@ export default function WOPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  useEffect(() => { if (status === 'unauthenticated') router.push('/login') }, [status, router])
+  useEffect(() => {
+    if (status === 'unauthenticated') router.push('/login')
+    else if (status === 'authenticated') {
+      const u = session?.user as any
+      setTenantId(u?.tenantId || '')
+    }
+  }, [status, router, session])
 
   const load = useCallback(async () => {
     setLoading(true)
-    const params = new URLSearchParams()
-    if (search) params.set('search', search)
-    if (filterStatus) params.set('status', filterStatus)
-    const data = await fetch(`/api/wo?${params}`, { credentials: 'include' }).then(r => r.json())
-    setWOs(Array.isArray(data) ? data : [])
-    setLoading(false)
-  }, [search, filterStatus])
+    const tid = (session?.user as any)?.tenantId || ''
+    let merged: any[] = []
 
-  useEffect(() => { if (status === 'authenticated') { load(); fetch('/api/mekanik', { credentials: 'include' }).then(r => r.json()).then(d => setMekaniks(Array.isArray(d) ? d : [])) } }, [status, load])
+    // 1. Load from IndexedDB first (instant) — only if we have a tenantId
+    if (tid) {
+      try {
+        const localWOs = await getWorkOrders(tid)
+        merged = localWOs.map(w => ({ ...w, _isLocal: !w._synced, offline: true }))
+      } catch { /* indexedDB unavailable */ }
+    }
+
+    // 2. Try API fetch if online
+    const online = await isOnline()
+    if (online && tid) {
+      try {
+        const params = new URLSearchParams()
+        if (search) params.set('search', search)
+        if (filterStatus) params.set('status', filterStatus)
+        const data = await fetch(`/api/wo?${params}`, { credentials: 'include' }).then(r => r.json())
+        const serverWOs = Array.isArray(data) ? data : []
+
+        // Mark server items
+        const serverIds = new Set(serverWOs.map((w: any) => w.id))
+
+        // Update local DB with server data
+        for (const wo of serverWOs) {
+          try {
+            await saveWorkOrder({
+              _localId: wo.id || crypto.randomUUID(),
+              _synced: true,
+              _syncId: wo.id,
+              id: wo.id,
+              tenantId: tid,
+              nomorWO: wo.nomorWO || '',
+              kendaraan: wo.kendaraan,
+              mekanikIds: wo.mekaniks?.map((wm: any) => wm.mekanikId) || [],
+              mekaniks: wo.mekaniks,
+              status: wo.status,
+              keluhan: wo.keluhan,
+              catatan: wo.catatan || '',
+              estimasi: wo.estimasi,
+              waktuMasuk: wo.waktuMasuk,
+              waktuSelesai: wo.waktuSelesai,
+              createdAt: wo.createdAt,
+            })
+          } catch { /* ignore */ }
+        }
+
+        // Merge: prefer server data, append local-only items
+        merged = [
+          ...serverWOs,
+          ...merged.filter((w: any) => !serverIds.has(w._syncId) && !serverIds.has(w._localId)),
+        ]
+        setIsOfflineData(false)
+      } catch {
+        // Network failed — rely on IndexedDB
+        setIsOfflineData(true)
+      }
+    } else if (tid) {
+      setIsOfflineData(true)
+    }
+
+    setWOs(merged)
+    setLoading(false)
+  }, [search, filterStatus, session, setIsOfflineData])
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      load()
+      fetch('/api/mekanik', { credentials: 'include' }).then(r => r.json()).then(d => setMekaniks(Array.isArray(d) ? d : [])).catch(() => {})
+    }
+  }, [status, load])
 
   const toggleMek = (id: string) => setForm(f => ({ ...f, mekanikIds: f.mekanikIds.includes(id) ? f.mekanikIds.filter(x => x !== id) : [...f.mekanikIds, id] }))
 
   const saveWO = async () => {
     if (!form.plat || !form.pemilik || !form.keluhan) { setToast({ msg: 'Plat, pemilik, dan keluhan wajib!', type: 'error' }); return }
     setSaving(true)
-    const res = await fetch('/api/wo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(form) })
+
+    const online = navigator.onLine
+    const tid = (session?.user as any)?.tenantId || ''
+
+    if (online) {
+      try {
+        const res = await fetch('/api/wo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(form),
+        })
+        if (res.ok) {
+          setShowModal(false)
+          load()
+          setToast({ msg: 'Work Order berhasil dibuat!', type: 'success' })
+          setSaving(false)
+          return
+        }
+        // API failed — fall through to offline save
+      } catch {
+        // Network error — fall through
+      }
+    }
+
+    // Offline save
+    const woData = {
+      _localId: crypto.randomUUID(),
+      _synced: false,
+      tenantId: tid,
+      nomorWO: `WO-OFFLINE-${new Date().toISOString().slice(0, 10)}`,
+      kendaraan: { plat: form.plat, jenis: form.jenis, merk: form.merk, tipe: form.tipe, pemilik: form.pemilik, hp: form.hp, alamat: form.alamat },
+      mekanikIds: form.mekanikIds,
+      mekaniks: form.mekanikIds.map((id: string) => ({ mekanikId: id })),
+      status: 'ANTRI',
+      keluhan: form.keluhan,
+      catatan: form.catatan,
+      estimasi: form.estimasi ? +form.estimasi : 0,
+      waktuMasuk: new Date().toISOString(),
+      waktuSelesai: undefined,
+      createdAt: new Date().toISOString(),
+    }
+
+    await saveWorkOrder(woData)
+    await addToSyncQueue({
+      method: 'POST',
+      endpoint: '/api/wo',
+      body: { ...form, _localId: woData._localId, tenantId: tid },
+    })
+
     setSaving(false)
-    if (res.ok) { setShowModal(false); load(); setToast({ msg: 'Work Order berhasil dibuat!', type: 'success' }) }
-    else { const e = await res.json(); setToast({ msg: e.error || 'Gagal menyimpan', type: 'error' }) }
+    setShowModal(false)
+    load()
+    setToast({ msg: 'Work Order disimpan offline. Akan disync saat online.', type: 'success' })
   }
 
   const updateStatus = async (id: string, status: string) => {
-    await fetch(`/api/wo/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ status }) })
-    load(); setShowDetail(null); setToast({ msg: `Status diubah ke ${status}`, type: 'success' })
+    const online = await isOnline()
+    if (online) {
+      try {
+        await fetch(`/api/wo/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ status }) })
+        load()
+        setShowDetail(null)
+        setToast({ msg: `Status diubah ke ${status}`, type: 'success' })
+        return
+      } catch { /* offline */ }
+    }
+    // Offline: queue it
+    await addToSyncQueue({ method: 'PATCH', endpoint: `/api/wo/${id}`, body: { status } })
+    load()
+    setShowDetail(null)
+    setToast({ msg: `Status akan diubah saat online.`, type: 'success' })
   }
 
   const deleteWO = async (id: string) => {
     if (!confirm('Hapus work order ini?')) return
-    await fetch(`/api/wo/${id}`, { method: 'DELETE', credentials: 'include' })
-    load(); setToast({ msg: 'Work Order dihapus', type: 'success' })
+    const online = await isOnline()
+    if (online) {
+      try {
+        await fetch(`/api/wo/${id}`, { method: 'DELETE', credentials: 'include' })
+        load()
+        setToast({ msg: 'Work Order dihapus', type: 'success' })
+        return
+      } catch { /* offline */ }
+    }
+    await addToSyncQueue({ method: 'DELETE', endpoint: `/api/wo/${id}`, body: {} })
+    load()
+    setToast({ msg: 'Penghapusan akan disync saat online.', type: 'success' })
   }
 
   const statusColor: any = { ANTRI: ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.5)'], PROSES: ['rgba(245,158,11,0.15)', '#F59E0B'], SELESAI: ['rgba(52,211,153,0.12)', '#34D399'], BAYAR: ['rgba(96,165,250,0.12)', '#60A5FA'] }
@@ -87,6 +235,12 @@ export default function WOPage() {
       {isMobile && <HamburgerButton onClick={() => setSidebarOpen(!sidebarOpen)} />}
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <main style={{ flex: 1, overflow: 'auto', padding: isMobile ? 12 : 20, paddingTop: isMobile ? 52 : 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {isOfflineData && (
+          <div style={{ background: 'rgba(245,158,11,0.12)', border: '0.5px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '6px 12px', fontSize: 11, color: '#F59E0B' }}>
+            📴 Menampilkan data offline. Data mungkin tidak lengkap.
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <h1 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 600 }}>Work Order</h1>
           {(role === 'ADMIN' || role === 'KASIR') && (
@@ -119,8 +273,11 @@ export default function WOPage() {
                 {loading ? <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--t3)' }}>Memuat...</td></tr>
                 : wos.length === 0 ? <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--t3)' }}>Tidak ada data</td></tr>
                 : wos.map(w => (
-                  <tr key={w.id} style={{ borderBottom: '0.5px solid var(--border)' }}>
-                    <td style={{ padding: '9px 12px', fontSize: 11, color: '#F59E0B' }}>{w.nomorWO}</td>
+                  <tr key={w.id || w._localId} style={{ borderBottom: '0.5px solid var(--border)' }}>
+                    <td style={{ padding: '9px 12px', fontSize: 11, color: '#F59E0B' }}>
+                      {w.nomorWO}
+                      {w._isLocal && <span style={{ fontSize: 9, marginLeft: 4, color: '#D97706' }}>⏳</span>}
+                    </td>
                     <td style={{ padding: '9px 12px' }}>
                       <div style={{ fontWeight: 500, fontSize: 12 }}>{w.kendaraan?.plat}</div>
                       <div style={{ fontSize: 10, color: 'var(--t3)' }}>{w.kendaraan?.jenis} · {w.kendaraan?.tipe || '—'}</div>
@@ -133,10 +290,10 @@ export default function WOPage() {
                     <td style={{ padding: '9px 12px' }}>
                       <div style={{ display: 'flex', gap: 4 }}>
                         <Btn onClick={() => setShowDetail(w)}>👁</Btn>
-                        {w.status === 'ANTRI' && <Btn variant="amber" onClick={() => updateStatus(w.id, 'PROSES')}>▶</Btn>}
-                        {w.status === 'PROSES' && <Btn variant="success" onClick={() => updateStatus(w.id, 'SELESAI')}>✓</Btn>}
-                        {w.status === 'SELESAI' && <Btn variant="blue" onClick={() => router.push(`/kasir?woId=${w.id}`)}>💰</Btn>}
-                        {role === 'ADMIN' && <Btn variant="danger" onClick={() => deleteWO(w.id)}>🗑</Btn>}
+                        {w.status === 'ANTRI' && <Btn variant="amber" onClick={() => updateStatus(w.id || w._localId, 'PROSES')}>▶</Btn>}
+                        {w.status === 'PROSES' && <Btn variant="success" onClick={() => updateStatus(w.id || w._localId, 'SELESAI')}>✓</Btn>}
+                        {w.status === 'SELESAI' && <Btn variant="blue" onClick={() => router.push(`/kasir?woId=${w.id || w._localId}`)}>💰</Btn>}
+                        {role === 'ADMIN' && <Btn variant="danger" onClick={() => deleteWO(w.id || w._localId)}>🗑</Btn>}
                       </div>
                     </td>
                   </tr>
@@ -151,9 +308,9 @@ export default function WOPage() {
           {loading ? <div style={{ textAlign: 'center', padding: 24, color: 'var(--t3)' }}>Memuat...</div>
           : wos.length === 0 ? <div style={{ textAlign: 'center', padding: 24, color: 'var(--t3)' }}>Tidak ada data</div>
           : wos.map(w => (
-            <div key={w.id} style={{ background: 'var(--bg2)', borderRadius: 10, border: '0.5px solid var(--border)', padding: 12, marginBottom: 10 }}>
+            <div key={w.id || w._localId} style={{ background: 'var(--bg2)', borderRadius: 10, border: '0.5px solid var(--border)', padding: 12, marginBottom: 10 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontSize: 12, color: '#F59E0B', fontWeight: 600 }}>{w.nomorWO}</span>
+                <span style={{ fontSize: 12, color: '#F59E0B', fontWeight: 600 }}>{w.nomorWO} {w._isLocal && <span style={{ color: '#D97706' }}>⏳</span>}</span>
                 <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: (statusColor[w.status]||[])[0], color: (statusColor[w.status]||[])[1], fontWeight: 500 }}>{w.status}</span>
               </div>
               <div style={{ fontSize: 12, fontWeight: 500 }}>{w.kendaraan?.plat} · {w.kendaraan?.jenis}</div>
@@ -162,10 +319,10 @@ export default function WOPage() {
               <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 4 }}>👷 {w.mekaniks?.map((wm: any) => wm.mekanik?.nama).join(', ') || '—'}</div>
               <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
                 <Btn onClick={() => setShowDetail(w)}>Detail</Btn>
-                {w.status === 'ANTRI' && <Btn variant="amber" onClick={() => updateStatus(w.id, 'PROSES')}>Proses</Btn>}
-                {w.status === 'PROSES' && <Btn variant="success" onClick={() => updateStatus(w.id, 'SELESAI')}>Selesai</Btn>}
-                {w.status === 'SELESAI' && <Btn variant="blue" onClick={() => router.push(`/kasir?woId=${w.id}`)}>Kasir</Btn>}
-                {role === 'ADMIN' && <Btn variant="danger" onClick={() => deleteWO(w.id)}>Hapus</Btn>}
+                {w.status === 'ANTRI' && <Btn variant="amber" onClick={() => updateStatus(w.id || w._localId, 'PROSES')}>Proses</Btn>}
+                {w.status === 'PROSES' && <Btn variant="success" onClick={() => updateStatus(w.id || w._localId, 'SELESAI')}>Selesai</Btn>}
+                {w.status === 'SELESAI' && <Btn variant="blue" onClick={() => router.push(`/kasir?woId=${w.id || w._localId}`)}>Kasir</Btn>}
+                {role === 'ADMIN' && <Btn variant="danger" onClick={() => deleteWO(w.id || w._localId)}>Hapus</Btn>}
               </div>
             </div>
           ))}
@@ -214,9 +371,9 @@ export default function WOPage() {
           footer={
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Btn onClick={() => setShowDetail(null)}>Tutup</Btn>
-              {showDetail.status === 'ANTRI' && <Btn variant="amber" onClick={() => updateStatus(showDetail.id, 'PROSES')}>▶ Mulai Proses</Btn>}
-              {showDetail.status === 'PROSES' && <Btn variant="success" onClick={() => updateStatus(showDetail.id, 'SELESAI')}>✓ Tandai Selesai</Btn>}
-              {showDetail.status === 'SELESAI' && <Btn variant="blue" onClick={() => { setShowDetail(null); router.push(`/kasir?woId=${showDetail.id}`) }}>💰 Proses Kasir</Btn>}
+              {showDetail.status === 'ANTRI' && <Btn variant="amber" onClick={() => updateStatus(showDetail.id || showDetail._localId, 'PROSES')}>▶ Mulai Proses</Btn>}
+              {showDetail.status === 'PROSES' && <Btn variant="success" onClick={() => updateStatus(showDetail.id || showDetail._localId, 'SELESAI')}>✓ Tandai Selesai</Btn>}
+              {showDetail.status === 'SELESAI' && <Btn variant="blue" onClick={() => { setShowDetail(null); router.push(`/kasir?woId=${showDetail.id || showDetail._localId}`) }}>💰 Proses Kasir</Btn>}
             </div>
           }>
           <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>

@@ -6,6 +6,9 @@ import Sidebar, { HamburgerButton } from '@/components/Sidebar'
 import Modal from '@/components/Modal'
 import Toast from '@/components/Toast'
 import { rp } from '@/lib/utils'
+import { saveSparePart, getSpareParts, updateSparePart, addToSyncQueue } from '@/lib/db-local'
+import { isOnline } from '@/lib/sync-manager'
+import { useOffline } from '@/lib/offline-context'
 
 const Btn = ({ onClick, children, variant='default', disabled }: any) => {
   const s: any = { default:{background:'transparent',border:'0.5px solid rgba(255,255,255,0.12)',color:'rgba(255,255,255,0.5)'}, amber:{background:'#F59E0B',border:'none',color:'#0F1623',fontWeight:600}, danger:{background:'transparent',border:'0.5px solid rgba(248,113,113,0.4)',color:'#F87171'}, success:{background:'transparent',border:'0.5px solid rgba(52,211,153,0.4)',color:'#34D399'} }
@@ -17,6 +20,7 @@ const emptyForm = { nama:'', kategori:'UMUM', satuan:'pcs', stok:'0', minStok:'5
 export default function SparePartPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const { isOnline: isOnlineStatus } = useOffline()
   const [parts, setParts] = useState<any[]>([])
   const [search, setSearch] = useState('')
   const [filterKat, setFilterKat] = useState('')
@@ -27,6 +31,8 @@ export default function SparePartPage() {
   const [saving, setSaving] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [isOfflineData, setIsOfflineData] = useState(false)
+  const [tenantId, setTenantId] = useState<string>('')
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768)
@@ -35,39 +41,159 @@ export default function SparePartPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  useEffect(() => { if (status==='unauthenticated') router.push('/login') }, [status,router])
+  useEffect(() => { if (status==='unauthenticated') router.push('/login')
+    else if (status === 'authenticated') setTenantId((session?.user as any)?.tenantId || '')
+  }, [status,router,session])
 
   const load = useCallback(async () => {
-    const params = new URLSearchParams()
-    if (search) params.set('search',search)
-    if (filterKat) params.set('kategori',filterKat)
-    const d = await fetch(`/api/sparepart?${params}`, { credentials: 'include' }).then(r=>r.json())
-    setParts(Array.isArray(d)?d:[])
-  },[search,filterKat])
+    const tid = (session?.user as any)?.tenantId || ''
+    let merged: any[] = []
+    setIsOfflineData(false)
+
+    const online = await isOnline()
+    if (online) {
+      try {
+        const params = new URLSearchParams()
+        if (search) params.set('search',search)
+        if (filterKat) params.set('kategori',filterKat)
+        const d = await fetch(`/api/sparepart?${params}`, { credentials: 'include' }).then(r=>r.json())
+        merged = Array.isArray(d) ? d : []
+
+        // Sync server data to IndexedDB
+        if (tid) {
+          for (const sp of merged) {
+            try {
+              await saveSparePart({
+                _localId: sp.id || crypto.randomUUID(),
+                _synced: true,
+                _syncId: sp.id,
+                id: sp.id,
+                tenantId: tid,
+                nama: sp.nama,
+                kategori: sp.kategori,
+                satuan: sp.satuan,
+                stok: sp.stok,
+                minStok: sp.minStok,
+                hargaBeli: sp.hargaBeli,
+                hargaJual: sp.hargaJual,
+                keterangan: sp.keterangan,
+                createdAt: sp.createdAt,
+              })
+            } catch { /* ignore */ }
+          }
+        }
+      } catch { setIsOfflineData(true) }
+    } else {
+      // Load from IndexedDB
+      if (tid) {
+        try {
+          const localParts = await getSpareParts(tid)
+          merged = localParts.map((p: any) => ({
+            id: p._syncId || p._localId,
+            _localId: p._localId,
+            _isLocal: !p._synced,
+            nama: p.nama,
+            kategori: p.kategori,
+            satuan: p.satuan,
+            stok: p.stok,
+            minStok: p.minStok,
+            hargaBeli: p.hargaBeli,
+            hargaJual: p.hargaJual,
+            keterangan: p.keterangan,
+          }))
+          setIsOfflineData(true)
+        } catch { /* ignore */ }
+      }
+    }
+
+    setParts(merged)
+  },[search,filterKat,session])
 
   useEffect(() => { if (status==='authenticated') load() },[status,load])
 
   const save = async () => {
     if (!form.nama) { setToast({msg:'Nama wajib!',type:'error'}); return }
     setSaving(true)
-    const url = modal==='edit' ? `/api/sparepart/${editId}` : '/api/sparepart'
-    const res = await fetch(url,{method:modal==='edit'?'PATCH':'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({...form,stok:+form.stok,minStok:+form.minStok,hargaBeli:+form.hargaBeli,hargaJual:+form.hargaJual})})
-    setSaving(false)
-    if (res.ok) { setModal(null); load(); setToast({msg:'Spare part disimpan!',type:'success'}) }
-    else setToast({msg:'Gagal menyimpan',type:'error'})
+    const tid = (session?.user as any)?.tenantId || ''
+
+    const online = await isOnline()
+    if (online) {
+      try {
+        const url = modal==='edit' ? `/api/sparepart/${editId}` : '/api/sparepart'
+        const res = await fetch(url,{method:modal==='edit'?'PATCH':'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({...form,stok:+form.stok,minStok:+form.minStok,hargaBeli:+form.hargaBeli,hargaJual:+form.hargaJual})})
+        if (res.ok) { setModal(null); load(); setToast({msg:'Spare part disimpan!',type:'success'}); setSaving(false); return }
+      } catch { /* fall through */ }
+    }
+
+    // Offline save
+    const spData = {
+      _localId: modal === 'edit' ? editId : crypto.randomUUID(),
+      _synced: false,
+      tenantId: tid,
+      nama: form.nama,
+      kategori: form.kategori,
+      satuan: form.satuan,
+      stok: +form.stok,
+      minStok: +form.minStok,
+      hargaBeli: +form.hargaBeli,
+      hargaJual: +form.hargaJual,
+      keterangan: form.keterangan,
+      createdAt: new Date().toISOString(),
+    }
+
+    await saveSparePart(spData as any)
+    await addToSyncQueue({
+      method: modal === 'edit' ? 'PATCH' : 'POST',
+      endpoint: modal === 'edit' ? `/api/sparepart/${editId}` : '/api/sparepart',
+      body: { ...spData, _localId: undefined },
+    })
+
+    setSaving(false); setModal(null); load()
+    setToast({msg:'Spare part disimpan offline. Akan disync saat online.',type:'success'})
   }
 
   const del = async (id: string) => {
     if (!confirm('Hapus spare part ini?')) return
-    await fetch(`/api/sparepart/${id}`,{method:'DELETE',credentials:'include'})
-    load(); setToast({msg:'Dihapus',type:'success'})
+    const online = await isOnline()
+    if (online) {
+      try {
+        await fetch(`/api/sparepart/${id}`,{method:'DELETE',credentials:'include'})
+        load(); setToast({msg:'Dihapus',type:'success'}); return
+      } catch { /* fall through */ }
+    }
+    await addToSyncQueue({ method: 'DELETE', endpoint: `/api/sparepart/${id}`, body: {} })
+    load(); setToast({msg:'Penghapusan akan disync saat online.',type:'success'})
   }
 
   const tambahStok = async (p: any) => {
     const n = prompt(`Tambah stok "${p.nama}"\nStok saat ini: ${p.stok} ${p.satuan}\n\nJumlah tambahan:`)
     if (!n||isNaN(+n)||+n<=0) return
-    await fetch(`/api/sparepart/${p.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({stok:p.stok + +n})})
-    load(); setToast({msg:`Stok +${n} ${p.satuan}`,type:'success'})
+    const online = await isOnline()
+    if (online) {
+      try {
+        await fetch(`/api/sparepart/${p.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({stok:p.stok + +n})})
+        load(); setToast({msg:`Stok +${n} ${p.satuan}`,type:'success'}); return
+      } catch { /* fall through */ }
+    }
+    // Offline: update local
+    const tid = (session?.user as any)?.tenantId || ''
+    const updatedSp = {
+      _localId: p._localId || p.id,
+      _synced: false,
+      tenantId: tid,
+      nama: p.nama,
+      kategori: p.kategori,
+      satuan: p.satuan,
+      stok: p.stok + +n,
+      minStok: p.minStok,
+      hargaBeli: p.hargaBeli,
+      hargaJual: p.hargaJual,
+      keterangan: p.keterangan,
+      createdAt: p.createdAt || new Date().toISOString(),
+    }
+    await saveSparePart(updatedSp as any)
+    await addToSyncQueue({ method: 'PATCH', endpoint: `/api/sparepart/${p.id || p._localId}`, body: { stok: updatedSp.stok } })
+    load(); setToast({msg:`Stok +${n} ${p.satuan} (offline)`,type:'success'})
   }
 
   if (status==='loading') return null
@@ -78,6 +204,11 @@ export default function SparePartPage() {
       {isMobile && <HamburgerButton onClick={() => setSidebarOpen(!sidebarOpen)} />}
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <main style={{flex:1,overflow:'auto',padding:isMobile?12:20,paddingTop:isMobile?52:20,display:'flex',flexDirection:'column',gap:14}}>
+        {isOfflineData && (
+          <div style={{ background: 'rgba(245,158,11,0.12)', border: '0.5px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '6px 12px', fontSize: 11, color: '#F59E0B' }}>
+            📴 Menampilkan data offline. Stok mungkin tidak akurat.
+          </div>
+        )}
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
           <h1 style={{fontSize:isMobile?16:18,fontWeight:600}}>Spare Part</h1>
           {role==='ADMIN' && <Btn variant="amber" onClick={()=>{setForm(emptyForm);setModal('add')}}>+ Tambah Part</Btn>}
@@ -101,8 +232,11 @@ export default function SparePartPage() {
                   const kritis = p.stok<=p.minStok
                   const pct = Math.min(100,Math.round(p.stok/Math.max(p.minStok*2,1)*100))
                   const color = p.stok===0?'#F87171':kritis?'#F59E0B':'#34D399'
-                  return <tr key={p.id} style={{borderBottom:'0.5px solid var(--border)'}}>
-                    <td style={{padding:'9px 12px',fontSize:12,fontWeight:500}}>{p.nama}</td>
+                  return <tr key={p.id || p._localId} style={{borderBottom:'0.5px solid var(--border)'}}>
+                    <td style={{padding:'9px 12px',fontSize:12,fontWeight:500}}>
+                      {p.nama}
+                      {p._isLocal && <span style={{fontSize:9,marginLeft:4,color:'#D97706'}}>⏳</span>}
+                    </td>
                     <td style={{padding:'9px 12px'}}><span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'rgba(255,255,255,0.07)',color:'var(--t2)'}}>{p.kategori}</span></td>
                     <td style={{padding:'9px 12px',fontSize:11,color:'var(--t3)'}}>{p.satuan}</td>
                     <td style={{padding:'9px 12px'}}>
@@ -120,8 +254,8 @@ export default function SparePartPage() {
                       <div style={{display:'flex',gap:4}}>
                         <Btn variant="success" onClick={()=>tambahStok(p)}>+ Stok</Btn>
                         {role==='ADMIN' && <>
-                          <Btn onClick={()=>{setForm({nama:p.nama,kategori:p.kategori,satuan:p.satuan,stok:String(p.stok),minStok:String(p.minStok),hargaBeli:String(p.hargaBeli),hargaJual:String(p.hargaJual),keterangan:p.keterangan||''});setEditId(p.id);setModal('edit')}}>✏️</Btn>
-                          <Btn variant="danger" onClick={()=>del(p.id)}>🗑</Btn>
+                          <Btn onClick={()=>{setForm({nama:p.nama,kategori:p.kategori,satuan:p.satuan,stok:String(p.stok),minStok:String(p.minStok),hargaBeli:String(p.hargaBeli),hargaJual:String(p.hargaJual),keterangan:p.keterangan||''});setEditId(p.id||p._localId);setModal('edit')}}>✏️</Btn>
+                          <Btn variant="danger" onClick={()=>del(p.id||p._localId)}>🗑</Btn>
                         </>}
                       </div>
                     </td>
@@ -139,9 +273,9 @@ export default function SparePartPage() {
             const kritis = p.stok<=p.minStok
             const pct = Math.min(100,Math.round(p.stok/Math.max(p.minStok*2,1)*100))
             const color = p.stok===0?'#F87171':kritis?'#F59E0B':'#34D399'
-            return <div key={p.id} style={{background:'var(--bg2)',borderRadius:10,border:'0.5px solid var(--border)',padding:12,marginBottom:10}}>
+            return <div key={p.id || p._localId} style={{background:'var(--bg2)',borderRadius:10,border:'0.5px solid var(--border)',padding:12,marginBottom:10}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                <span style={{fontSize:13,fontWeight:500}}>{p.nama}</span>
+                <span style={{fontSize:13,fontWeight:500}}>{p.nama} {p._isLocal && <span style={{fontSize:9,color:'#D97706'}}>⏳</span>}</span>
                 <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'rgba(255,255,255,0.07)',color:'var(--t2)'}}>{p.kategori}</span>
               </div>
               <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--t2)',marginBottom:4}}>
@@ -152,8 +286,8 @@ export default function SparePartPage() {
               <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                 <Btn variant="success" onClick={()=>tambahStok(p)}>+ Stok</Btn>
                 {role==='ADMIN' && <>
-                  <Btn onClick={()=>{setForm({nama:p.nama,kategori:p.kategori,satuan:p.satuan,stok:String(p.stok),minStok:String(p.minStok),hargaBeli:String(p.hargaBeli),hargaJual:String(p.hargaJual),keterangan:p.keterangan||''});setEditId(p.id);setModal('edit')}}>Edit</Btn>
-                  <Btn variant="danger" onClick={()=>del(p.id)}>Hapus</Btn>
+                  <Btn onClick={()=>{setForm({nama:p.nama,kategori:p.kategori,satuan:p.satuan,stok:String(p.stok),minStok:String(p.minStok),hargaBeli:String(p.hargaBeli),hargaJual:String(p.hargaJual),keterangan:p.keterangan||''});setEditId(p.id||p._localId);setModal('edit')}}>Edit</Btn>
+                  <Btn variant="danger" onClick={()=>del(p.id||p._localId)}>Hapus</Btn>
                 </>}
               </div>
             </div>

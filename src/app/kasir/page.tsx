@@ -7,6 +7,9 @@ import Modal from '@/components/Modal'
 import Toast from '@/components/Toast'
 import CetakNota from '@/components/CetakNota'
 import { rp } from '@/lib/utils'
+import { saveTransaksi, getTransaksi, getSpareParts, saveSparePart, addToSyncQueue } from '@/lib/db-local'
+import { isOnline } from '@/lib/sync-manager'
+import { useOffline } from '@/lib/offline-context'
 
 interface KasirItem { key: string; tipe: 'JASA'|'PART'; jasaId?: string; sparePartId?: string; nama: string; qty: number; harga: number }
 
@@ -23,6 +26,7 @@ function KasirContent() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { isOnline: isOnlineStatus } = useOffline()
   const [wos, setWOs] = useState<any[]>([])
   const [jasas, setJasas] = useState<any[]>([])
   const [parts, setParts] = useState<any[]>([])
@@ -40,6 +44,7 @@ function KasirContent() {
   const [tenantInfo, setTenantInfo] = useState<any>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const [offlineTrx, setOfflineTrx] = useState(false)
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768)
@@ -52,15 +57,51 @@ function KasirContent() {
 
   useEffect(() => {
     if (status !== 'authenticated') return
-    fetch('/api/wo?status=SELESAI').then(r => r.json()).then(d => setWOs(Array.isArray(d) ? d : []))
-    fetch('/api/jasa').then(r => r.json()).then(d => setJasas(Array.isArray(d) ? d : []))
-    fetch('/api/sparepart').then(r => r.json()).then(d => setParts(Array.isArray(d) ? d : []))
-    fetch('/api/tenant').then(r => r.json()).then(d => setTenantInfo(d)).catch(() => {})
+    const tid = (session?.user as any)?.tenantId
+
+    // Load from API if online, fall back to IndexedDB
+    const loadData = async () => {
+      const online = await isOnline()
+      if (online) {
+        try {
+          const [woRes, jaRes, spRes, tRes] = await Promise.all([
+            fetch('/api/wo?status=SELESAI').then(r => r.json()),
+            fetch('/api/jasa').then(r => r.json()),
+            fetch('/api/sparepart').then(r => r.json()),
+            fetch('/api/tenant').then(r => r.json()).catch(() => null),
+          ])
+          setWOs(Array.isArray(woRes) ? woRes : [])
+          setJasas(Array.isArray(jaRes) ? jaRes : [])
+          setParts(Array.isArray(spRes) ? spRes : [])
+          setTenantInfo(tRes)
+        } catch { /* offline */ }
+      } else {
+        // Load from IndexedDB
+        if (tid) {
+          try {
+            const localParts = await getSpareParts(tid)
+            setParts(localParts.map((p: any) => ({
+              id: p._syncId || p._localId,
+              nama: p.nama,
+              kategori: p.kategori,
+              satuan: p.satuan,
+              stok: p.stok,
+              minStok: p.minStok,
+              hargaBeli: p.hargaBeli,
+              hargaJual: p.hargaJual,
+              keterangan: p.keterangan,
+            })))
+          } catch { /* ignore */ }
+        }
+      }
+    }
+    loadData()
+
     const woId = searchParams.get('woId')
     if (woId) {
-      fetch(`/api/wo/${woId}`).then(r => r.json()).then(w => { if (w.id) setSelectedWO(w) })
+      fetch(`/api/wo/${woId}`).then(r => r.json()).then(w => { if (w.id) setSelectedWO(w) }).catch(() => {})
     }
-  }, [status, searchParams])
+  }, [status, searchParams, session])
 
   const subtotal = items.reduce((a, b) => a + b.qty * b.harga, 0)
   const total = subtotal * (1 - diskon / 100)
@@ -88,21 +129,72 @@ function KasirContent() {
     if (!selectedWO) { setToast({ msg: 'Pilih Work Order!', type: 'error' }); return }
     if (!items.length) { setToast({ msg: 'Tambah minimal 1 item!', type: 'error' }); return }
     setSaving(true)
-    const res = await fetch('/api/transaksi', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ workOrderId: selectedWO.id, items, diskon, metode, catatan }),
-    })
-    setSaving(false)
-    if (res.ok) {
-      const trx = await res.json()
-      setStruk(trx)
-      setItems([]); setDiskon(0); setSelectedWO(null)
-      setToast({ msg: 'Pembayaran berhasil!', type: 'success' })
-    } else {
-      const e = await res.json()
-      setToast({ msg: e.error || 'Gagal memproses', type: 'error' })
+    const tid = (session?.user as any)?.tenantId || ''
+
+    const online = await isOnline()
+
+    if (online) {
+      try {
+        const res = await fetch('/api/transaksi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workOrderId: selectedWO.id, items, diskon, metode, catatan }),
+        })
+        if (res.ok) {
+          const trx = await res.json()
+          setStruk(trx)
+          setItems([]); setDiskon(0); setSelectedWO(null)
+          setSaving(false)
+          setToast({ msg: 'Pembayaran berhasil!', type: 'success' })
+          return
+        }
+      } catch { /* fall through to offline */ }
     }
+
+    // Offline save
+    const localTrxId = crypto.randomUUID()
+    const localTrx = {
+      _localId: localTrxId,
+      _synced: false,
+      tenantId: tid,
+      workOrderId: selectedWO.id || selectedWO._localId,
+      nomorTrx: `TRX-OFFLINE-${new Date().toISOString().slice(0, 10)}`,
+      items,
+      diskon,
+      total,
+      metode,
+      catatan,
+      createdAt: new Date().toISOString(),
+    }
+
+    await saveTransaksi(localTrx as any)
+    await addToSyncQueue({
+      method: 'POST',
+      endpoint: '/api/transaksi',
+      body: { workOrderId: selectedWO.id || selectedWO._localId, items, diskon, metode, catatan, _localId: localTrxId },
+    })
+
+    // Generate offline receipt
+    const offlineReceipt = {
+      ...localTrx,
+      id: localTrxId,
+      workOrderId: selectedWO.id || selectedWO._localId,
+      nomorTrx: localTrx.nomorTrx,
+      total: total,
+      metode,
+      catatan,
+      items,
+      diskon,
+      createdAt: localTrx.createdAt,
+      _isOffline: true,
+      kendaraan: selectedWO.kendaraan,
+    }
+
+    setStruk(offlineReceipt)
+    setItems([]); setDiskon(0); setSelectedWO(null)
+    setOfflineTrx(true)
+    setSaving(false)
+    setToast({ msg: 'Pembayaran disimpan offline. Akan disync saat online.', type: 'success' })
   }
 
   if (status === 'loading') return null
@@ -210,7 +302,7 @@ function KasirContent() {
 
       {/* CetakNota integrated */}
       {struk && (
-        <CetakNota transaksi={struk} tenant={tenantInfo?.tenant || tenantInfo} onClose={() => setStruk(null)} />
+        <CetakNota transaksi={struk} tenant={tenantInfo?.tenant || tenantInfo} onClose={() => { setStruk(null); setOfflineTrx(false) }} />
       )}
 
       {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
