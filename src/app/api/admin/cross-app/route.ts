@@ -98,6 +98,39 @@ export async function POST(req: NextRequest) {
             })
             return NextResponse.json({ success: true })
 
+          // --- Tenant Management ---
+          case 'createTenant': {
+            if (!data?.namaToko || !data?.slug) {
+              return NextResponse.json({ error: 'namaToko & slug wajib' }, { status: 400 })
+            }
+            const existing = await prisma.tenant.findUnique({ where: { slug: data.slug } })
+            if (existing) return NextResponse.json({ error: 'Slug sudah dipakai' }, { status: 409 })
+            const tenant = await prisma.tenant.create({
+              data: { namaToko: data.namaToko, slug: data.slug, plan: data.plan || 'free' },
+              select: { id: true, namaToko: true, slug: true, plan: true },
+            })
+            return NextResponse.json({ success: true, tenant }, { status: 201 })
+          }
+          case 'updateTenant': {
+            if (!data?.tenantId) return NextResponse.json({ error: 'tenantId wajib' }, { status: 400 })
+            await prisma.tenant.update({
+              where: { id: data.tenantId },
+              data: {
+                namaToko: data.namaToko || undefined,
+                slug: data.slug || undefined,
+                isActive: data.isActive ?? undefined,
+                alamat: data.alamat || undefined,
+                telepon: data.telepon || undefined,
+              },
+            })
+            return NextResponse.json({ success: true })
+          }
+          case 'deleteTenant': {
+            if (!data?.tenantId) return NextResponse.json({ error: 'tenantId wajib' }, { status: 400 })
+            await prisma.tenant.delete({ where: { id: data.tenantId } })
+            return NextResponse.json({ success: true })
+          }
+
           case 'updateActive':
             await prisma.user.update({ where: { email }, data: { aktif: data.aktif } })
             return NextResponse.json({ success: true })
