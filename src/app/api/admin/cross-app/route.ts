@@ -84,15 +84,19 @@ export async function POST(req: NextRequest) {
       }
       case 'deleteTenant': {
         if (!data?.tenantId) return NextResponse.json({ error: 'tenantId wajib' }, { status: 400 })
-        await prisma.workOrder.deleteMany({ where: { tenantId: data.tenantId } })
-        await prisma.transaksi.deleteMany({ where: { tenantId: data.tenantId } })
-        await prisma.sparePart.deleteMany({ where: { tenantId: data.tenantId } })
-        await prisma.jasa.deleteMany({ where: { tenantId: data.tenantId } })
-        await prisma.mekanik.deleteMany({ where: { tenantId: data.tenantId } })
-        await prisma.kendaraan.deleteMany({ where: { tenantId: data.tenantId } })
-        await prisma.tenantCounter.deleteMany({ where: { tenantId: data.tenantId } })
-        await prisma.user.deleteMany({ where: { tenantId: data.tenantId } })
-        await prisma.tenant.delete({ where: { id: data.tenantId } })
+        // Use raw SQL to avoid Prisma cascade/relation issues
+        const tid = data.tenantId
+        await prisma.$executeRawUnsafe(`DELETE FROM "WorkOrderMekanik" WHERE "workOrderId" IN (SELECT id FROM "WorkOrder" WHERE "tenantId" = $1)`, tid)
+        await prisma.$executeRawUnsafe(`DELETE FROM "TransaksiItem" WHERE "transaksiId" IN (SELECT id FROM "Transaksi" WHERE "tenantId" = $1)`, tid)
+        await prisma.$executeRawUnsafe(`DELETE FROM "Transaksi" WHERE "tenantId" = $1`, tid)
+        await prisma.$executeRawUnsafe(`DELETE FROM "WorkOrder" WHERE "tenantId" = $1`, tid)
+        await prisma.$executeRawUnsafe(`DELETE FROM "TenantCounter" WHERE "tenantId" = $1`, tid)
+        await prisma.$executeRawUnsafe(`DELETE FROM "User" WHERE "tenantId" = $1`, tid)
+        await prisma.$executeRawUnsafe(`DELETE FROM "Mekanik" WHERE "tenantId" = $1`, tid)
+        await prisma.$executeRawUnsafe(`DELETE FROM "Kendaraan" WHERE "tenantId" = $1`, tid)
+        await prisma.$executeRawUnsafe(`DELETE FROM "SparePart" WHERE "tenantId" = $1`, tid)
+        await prisma.$executeRawUnsafe(`DELETE FROM "Jasa" WHERE "tenantId" = $1`, tid)
+        await prisma.$executeRawUnsafe(`DELETE FROM "Tenant" WHERE "id" = $1`, tid)
         return NextResponse.json({ success: true })
       }
       case 'updatePlan': {
