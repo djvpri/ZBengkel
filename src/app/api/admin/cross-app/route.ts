@@ -127,6 +127,15 @@ export async function POST(req: NextRequest) {
           }
           case 'deleteTenant': {
             if (!data?.tenantId) return NextResponse.json({ error: 'tenantId wajib' }, { status: 400 })
+            // Delete all related data first (foreign key constraints)
+            await prisma.workOrder.deleteMany({ where: { tenantId: data.tenantId } })
+            await prisma.transaksi.deleteMany({ where: { tenantId: data.tenantId } })
+            await prisma.sparePart.deleteMany({ where: { tenantId: data.tenantId } })
+            await prisma.jasa.deleteMany({ where: { tenantId: data.tenantId } })
+            await prisma.mekanik.deleteMany({ where: { tenantId: data.tenantId } })
+            await prisma.kendaraan.deleteMany({ where: { tenantId: data.tenantId } })
+            await prisma.tenantCounter.deleteMany({ where: { tenantId: data.tenantId } })
+            await prisma.user.deleteMany({ where: { tenantId: data.tenantId } })
             await prisma.tenant.delete({ where: { id: data.tenantId } })
             return NextResponse.json({ success: true })
           }
