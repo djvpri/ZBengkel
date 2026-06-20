@@ -40,6 +40,29 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
+        
+        const email = credentials.email as string
+        const password = credentials.password as string
+        
+        // Face login
+        if (password.startsWith('face:')) {
+          const user = await prisma.user.findUnique({
+            where: { email },
+            include: { tenant: true },
+          })
+          if (!user || !user.aktif) return null
+          if (!user.tenantId || !user.tenant?.isActive) return null
+          return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            tenantId: user.tenantId,
+            tenantNama: user.tenant.namaToko,
+          }
+        }
+        
+        // Normal login
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
           include: { tenant: true },

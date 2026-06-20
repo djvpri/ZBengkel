@@ -88,6 +88,7 @@ model User {
   name      String
   email     String   @unique
   password  String
+  faceId    String?  @unique
   role      Role     @default(KASIR)
   hp        String?
   aktif     Boolean  @default(true)
