@@ -41,3 +41,105 @@ select option { background: #1C2A3E; color: rgba(255,255,255,0.85); }
   body { background: #fff !important; color: #000 !important; }
   .no-print { display: none !important; }
 }
+
+/* ========== RESPONSIVE / MOBILE HELPERS ========== */
+
+/* Show/hide helpers */
+@media (max-width: 768px) {
+  .hide-mobile { display: none !important; }
+  .show-mobile { display: block !important; }
+  .mobile-grid-2 { grid-template-columns: 1fr 1fr !important; }
+  .mobile-grid-1 { grid-template-columns: 1fr !important; }
+}
+@media (min-width: 769px) {
+  .hide-desktop { display: none !important; }
+  .show-desktop { display: block !important; }
+}
+
+/* Mobile bottom-sheet modal */
+@media (max-width: 768px) {
+  .modal-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .modal-content {
+    border-radius: 16px 16px 0 0 !important;
+    max-height: 85vh !important;
+  }
+}
+
+/* Mobile card-style table */
+@media (max-width: 768px) {
+  .tb-wrap table,
+  .tb-wrap thead,
+  .tb-wrap tbody,
+  .tb-wrap th,
+  .tb-wrap td,
+  .tb-wrap tr {
+    display: block;
+  }
+  .tb-wrap thead {
+    display: none !important;
+  }
+  .tb-wrap tr {
+    background: var(--bg2);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .tb-wrap td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0 !important;
+    border-bottom: 0.5px solid var(--border);
+    font-size: 12px;
+  }
+  .tb-wrap td:last-child {
+    border-bottom: none;
+  }
+  .tb-wrap td::before {
+    content: attr(data-label);
+    font-size: 10px;
+    color: var(--t3);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    flex-shrink: 0;
+    margin-right: 8px;
+  }
+}
+
+/* Scrollable horizontal tables on small screens */
+@media (max-width: 768px) {
+  .scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .scroll-x table {
+    min-width: 600px;
+  }
+}
+
+/* Stack form columns on mobile */
+@media (max-width: 768px) {
+  .form-grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+  .form-grid-3 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Smaller font/padding on mobile */
+@media (max-width: 768px) {
+  body {
+    font-size: 13px;
+  }
+  .main-padding {
+    padding: 12px !important;
+  }
+  .card-padding {
+    padding: 12px !important;
+  }
+}

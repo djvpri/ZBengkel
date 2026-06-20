@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import Sidebar from '@/components/Sidebar'
+import Sidebar, { HamburgerButton } from '@/components/Sidebar'
 import Modal from '@/components/Modal'
 import Toast from '@/components/Toast'
 import { rp } from '@/lib/utils'
@@ -22,15 +22,23 @@ export default function JasaPage() {
   const [form, setForm] = useState(emptyForm)
   const [toast, setToast] = useState<any>(null)
   const [saving, setSaving] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768)
+    check(); window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => { if (status==='unauthenticated') router.push('/login') },[status,router])
-  const load = async () => { const d = await fetch('/api/jasa').then(r=>r.json()); setJasas(Array.isArray(d)?d:[]) }
+  const load = async () => { const d = await fetch('/api/jasa', { credentials: 'include' }).then(r=>r.json()); setJasas(Array.isArray(d)?d:[]) }
   useEffect(() => { if (status==='authenticated') load() },[status])
 
   const save = async () => {
     if (!form.nama) { setToast({msg:'Nama wajib!',type:'error'}); return }
     setSaving(true)
-    const res = await fetch('/api/jasa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,harga:+form.harga})})
+    const res = await fetch('/api/jasa',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({...form,harga:+form.harga})})
     setSaving(false)
     if (res.ok) { setModal(false); load(); setToast({msg:'Jasa ditambahkan!',type:'success'}) }
     else setToast({msg:'Gagal',type:'error'})
@@ -41,13 +49,16 @@ export default function JasaPage() {
 
   return (
     <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
-      <Sidebar />
-      <main style={{flex:1,overflow:'auto',padding:20,display:'flex',flexDirection:'column',gap:14}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <h1 style={{fontSize:18,fontWeight:600}}>Daftar Jasa</h1>
+      {isMobile && <HamburgerButton onClick={() => setSidebarOpen(!sidebarOpen)} />}
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <main style={{flex:1,overflow:'auto',padding:isMobile?12:20,paddingTop:isMobile?52:20,display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+          <h1 style={{fontSize:isMobile?16:18,fontWeight:600}}>Daftar Jasa</h1>
           {role==='ADMIN' && <Btn variant="amber" onClick={()=>{setForm(emptyForm);setModal(true)}}>+ Tambah Jasa</Btn>}
         </div>
-        <div style={{background:'var(--bg2)',borderRadius:12,border:'0.5px solid var(--border)',overflow:'hidden'}}>
+
+        {/* Desktop */}
+        <div className="hide-mobile" style={{background:'var(--bg2)',borderRadius:12,border:'0.5px solid var(--border)',overflow:'hidden'}}>
           <table style={{width:'100%',borderCollapse:'collapse'}}>
             <thead><tr>{['Nama Jasa','Kategori','Harga'].map(h=><th key={h} style={{padding:'9px 12px',textAlign:'left',fontSize:10,color:'var(--t3)',borderBottom:'0.5px solid var(--border)',textTransform:'uppercase'}}>{h}</th>)}</tr></thead>
             <tbody>
@@ -62,13 +73,27 @@ export default function JasaPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile */}
+        <div className="hide-desktop">
+          {jasas.map(j=>(
+            <div key={j.id} style={{background:'var(--bg2)',borderRadius:10,border:'0.5px solid var(--border)',padding:12,marginBottom:10}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:4}}>
+                <span style={{fontSize:13,fontWeight:500}}>{j.nama}</span>
+                <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:'rgba(255,255,255,0.07)',color:'var(--t2)'}}>{j.kategori}</span>
+              </div>
+              <div style={{fontSize:13,fontWeight:600,color:'#F59E0B'}}>{rp(j.harga)}</div>
+            </div>
+          ))}
+          {!jasas.length && <div style={{textAlign:'center',padding:24,color:'var(--t3)',fontSize:12}}>Belum ada jasa</div>}
+        </div>
       </main>
       {modal && (
         <Modal title="Tambah Jasa" onClose={()=>setModal(false)}
           footer={<><Btn onClick={()=>setModal(false)}>Batal</Btn><Btn variant="amber" onClick={save} disabled={saving}>{saving?'...':'Simpan'}</Btn></>}>
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
             <div><label style={{fontSize:11,color:'var(--t2)',display:'block',marginBottom:4}}>Nama Jasa *</label><input value={form.nama} onChange={e=>setForm(f=>({...f,nama:e.target.value}))} /></div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div className="form-grid-2" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
               <div><label style={{fontSize:11,color:'var(--t2)',display:'block',marginBottom:4}}>Kategori</label>
                 <select value={form.kategori} onChange={e=>setForm(f=>({...f,kategori:e.target.value}))}>
                   <option value="MOTOR">Motor</option><option value="MOBIL">Mobil</option><option value="ALAT_BERAT">Alat Berat</option><option value="UMUM">Umum</option>

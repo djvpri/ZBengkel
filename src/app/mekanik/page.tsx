@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import Sidebar from '@/components/Sidebar'
+import Sidebar, { HamburgerButton } from '@/components/Sidebar'
 import Modal from '@/components/Modal'
 import Toast from '@/components/Toast'
 
@@ -22,11 +22,19 @@ export default function MekanikPage() {
   const [form, setForm] = useState(emptyForm)
   const [toast, setToast] = useState<any>(null)
   const [saving, setSaving] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768)
+    check(); window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => { if (status==='unauthenticated') router.push('/login') }, [status,router])
 
   const load = async () => {
-    const d = await fetch('/api/mekanik').then(r=>r.json())
+    const d = await fetch('/api/mekanik', { credentials: 'include' }).then(r=>r.json())
     setMekaniks(Array.isArray(d)?d:[])
   }
   useEffect(() => { if (status==='authenticated') load() },[status])
@@ -34,7 +42,7 @@ export default function MekanikPage() {
   const save = async () => {
     if (!form.nama) { setToast({msg:'Nama wajib!',type:'error'}); return }
     setSaving(true)
-    const res = await fetch('/api/mekanik',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,aktif:form.aktif==='true'})})
+    const res = await fetch('/api/mekanik',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({...form,aktif:form.aktif==='true'})})
     setSaving(false)
     if (res.ok) { setModal(false); load(); setToast({msg:'Mekanik ditambahkan!',type:'success'}) }
     else setToast({msg:'Gagal menyimpan',type:'error'})
@@ -42,12 +50,12 @@ export default function MekanikPage() {
 
   const del = async (id: string) => {
     if (!confirm('Hapus mekanik ini?')) return
-    await fetch(`/api/mekanik/${id}`,{method:'DELETE'})
+    await fetch(`/api/mekanik/${id}`,{method:'DELETE',credentials:'include'})
     load(); setToast({msg:'Dihapus',type:'success'})
   }
 
   const toggleAktif = async (m: any) => {
-    await fetch(`/api/mekanik/${m.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({aktif:!m.aktif})})
+    await fetch(`/api/mekanik/${m.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({aktif:!m.aktif})})
     load()
   }
 
@@ -56,15 +64,18 @@ export default function MekanikPage() {
 
   return (
     <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
-      <Sidebar />
-      <main style={{flex:1,overflow:'auto',padding:20,display:'flex',flexDirection:'column',gap:14}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <h1 style={{fontSize:18,fontWeight:600}}>Data Mekanik</h1>
+      {isMobile && <HamburgerButton onClick={() => setSidebarOpen(!sidebarOpen)} />}
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <main style={{flex:1,overflow:'auto',padding:isMobile?12:20,paddingTop:isMobile?52:20,display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+          <h1 style={{fontSize:isMobile?16:18,fontWeight:600}}>Data Mekanik</h1>
           {role==='ADMIN' && <Btn variant="amber" onClick={()=>{setForm(emptyForm);setModal(true)}}>+ Tambah Mekanik</Btn>}
         </div>
-        <div style={{background:'var(--bg2)',borderRadius:12,border:'0.5px solid var(--border)',overflow:'hidden'}}>
+
+        {/* Desktop */}
+        <div className="hide-mobile" style={{background:'var(--bg2)',borderRadius:12,border:'0.5px solid var(--border)',overflow:'hidden'}}>
           <table style={{width:'100%',borderCollapse:'collapse'}}>
-            <thead><tr>{['Nama','Spesialisasi','No. HP','Status','Total Selesai','Aksi'].map(h=><th key={h} style={{padding:'9px 12px',textAlign:'left',fontSize:10,color:'var(--t3)',borderBottom:'0.5px solid var(--border)',textTransform:'uppercase'}}>{h}</th>)}</tr></thead>
+            <thead><tr>{['Nama','Spesialisasi','No. HP','Status','Total Selesai','Aksi'].map(h=><th key={h} style={{padding:'9px 12px',textAlign:'left',fontSize:10,color:'var(--t3)',borderBottom:'0.5px solid var(--border)',textTransform:'uppercase',whiteSpace:'nowrap'}}>{h}</th>)}</tr></thead>
             <tbody>
               {mekaniks.map(m => {
                 const init = m.nama.split(' ').map((n:string)=>n[0]).slice(0,2).join('')
@@ -91,6 +102,34 @@ export default function MekanikPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile */}
+        <div className="hide-desktop">
+          {mekaniks.map(m => {
+            const init = m.nama.split(' ').map((n:string)=>n[0]).slice(0,2).join('')
+            return <div key={m.id} style={{background:'var(--bg2)',borderRadius:10,border:'0.5px solid var(--border)',padding:12,marginBottom:10}}>
+              <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:8}}>
+                <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(245,158,11,0.15)',border:'1px solid rgba(245,158,11,0.35)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:600,color:'#F59E0B',flexShrink:0}}>{init}</div>
+                <div>
+                  <div style={{fontSize:13,fontWeight:500}}>{m.nama}</div>
+                  <div style={{fontSize:10,color:'var(--t3)'}}>{spesMap[m.spesialis]||m.spesialis}</div>
+                </div>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:6}}>
+                <span style={{color:'var(--t2)'}}>HP: {m.hp||'—'}</span>
+                <span style={{color:'#34D399',fontWeight:500}}>✓ {m.totalSelesai} selesai</span>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{fontSize:10,padding:'2px 7px',borderRadius:4,background:m.aktif?'rgba(52,211,153,0.12)':'rgba(255,255,255,0.07)',color:m.aktif?'#34D399':'rgba(255,255,255,0.4)'}}>{m.aktif?'Aktif':'Nonaktif'}</span>
+                <div style={{display:'flex',gap:4}}>
+                  <Btn onClick={()=>toggleAktif(m)}>{m.aktif?'Nonaktifkan':'Aktifkan'}</Btn>
+                  {role==='ADMIN' && <Btn variant="danger" onClick={()=>del(m.id)}>Hapus</Btn>}
+                </div>
+              </div>
+            </div>
+          })}
+          {!mekaniks.length && <div style={{textAlign:'center',padding:24,color:'var(--t3)',fontSize:12}}>Belum ada mekanik</div>}
+        </div>
       </main>
 
       {modal && (
@@ -98,7 +137,7 @@ export default function MekanikPage() {
           footer={<><Btn onClick={()=>setModal(false)}>Batal</Btn><Btn variant="amber" onClick={save} disabled={saving}>{saving?'Menyimpan...':'Simpan'}</Btn></>}>
           <div style={{display:'flex',flexDirection:'column',gap:10}}>
             <div><label style={{fontSize:11,color:'var(--t2)',display:'block',marginBottom:4}}>Nama Mekanik *</label><input value={form.nama} onChange={e=>setForm(f=>({...f,nama:e.target.value}))} /></div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div className="form-grid-2" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
               <div><label style={{fontSize:11,color:'var(--t2)',display:'block',marginBottom:4}}>Spesialisasi</label>
                 <select value={form.spesialis} onChange={e=>setForm(f=>({...f,spesialis:e.target.value}))}>
                   {Object.entries(spesMap).map(([k,v])=><option key={k} value={k}>{v as string}</option>)}

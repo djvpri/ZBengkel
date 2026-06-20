@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import Sidebar from '@/components/Sidebar'
+import Sidebar, { HamburgerButton } from '@/components/Sidebar'
 import Modal from '@/components/Modal'
 import Toast from '@/components/Toast'
 import { fmtDate } from '@/lib/utils'
@@ -22,19 +22,27 @@ export default function UsersPage() {
   const [form, setForm] = useState({ name:'', email:'', password:'', role:'KASIR', hp:'' })
   const [toast, setToast] = useState<any>(null)
   const [saving, setSaving] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768)
+    check(); window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => {
     if (status==='unauthenticated') router.push('/login')
     if (status==='authenticated' && (session?.user as any)?.role !== 'ADMIN') router.push('/')
   },[status,session,router])
 
-  const load = async () => { const d = await fetch('/api/users').then(r=>r.json()); setUsers(Array.isArray(d)?d:[]) }
+  const load = async () => { const d = await fetch('/api/users', { credentials: 'include' }).then(r=>r.json()); setUsers(Array.isArray(d)?d:[]) }
   useEffect(() => { if (status==='authenticated') load() },[status])
 
   const save = async () => {
     if (!form.name||!form.email||!form.password) { setToast({msg:'Nama, email, password wajib!',type:'error'}); return }
     setSaving(true)
-    const res = await fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)})
+    const res = await fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify(form)})
     setSaving(false)
     if (res.ok) { setModal(false); load(); setToast({msg:'User berhasil dibuat!',type:'success'}) }
     else setToast({msg:'Gagal membuat user',type:'error'})
@@ -44,13 +52,16 @@ export default function UsersPage() {
 
   return (
     <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
-      <Sidebar />
-      <main style={{flex:1,overflow:'auto',padding:20,display:'flex',flexDirection:'column',gap:14}}>
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <h1 style={{fontSize:18,fontWeight:600}}>Kelola User</h1>
+      {isMobile && <HamburgerButton onClick={() => setSidebarOpen(!sidebarOpen)} />}
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <main style={{flex:1,overflow:'auto',padding:isMobile?12:20,paddingTop:isMobile?52:20,display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+          <h1 style={{fontSize:isMobile?16:18,fontWeight:600}}>Kelola User</h1>
           <Btn variant="amber" onClick={()=>{setForm({name:'',email:'',password:'',role:'KASIR',hp:''});setModal(true)}}>+ Tambah User</Btn>
         </div>
-        <div style={{background:'var(--bg2)',borderRadius:12,border:'0.5px solid var(--border)',overflow:'hidden'}}>
+
+        {/* Desktop */}
+        <div className="hide-mobile" style={{background:'var(--bg2)',borderRadius:12,border:'0.5px solid var(--border)',overflow:'hidden'}}>
           <table style={{width:'100%',borderCollapse:'collapse'}}>
             <thead><tr>{['Nama','Email','Role','No. HP','Dibuat'].map(h=><th key={h} style={{padding:'9px 12px',textAlign:'left',fontSize:10,color:'var(--t3)',borderBottom:'0.5px solid var(--border)',textTransform:'uppercase'}}>{h}</th>)}</tr></thead>
             <tbody>
@@ -74,6 +85,26 @@ export default function UsersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Mobile */}
+        <div className="hide-desktop">
+          {users.map(u=>{
+            const [bg,color] = roleColor[u.role]||['rgba(255,255,255,0.07)','var(--t2)']
+            const init = u.name.split(' ').map((n:string)=>n[0]).slice(0,2).join('')
+            return <div key={u.id} style={{background:'var(--bg2)',borderRadius:10,border:'0.5px solid var(--border)',padding:12,marginBottom:10}}>
+              <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:6}}>
+                <div style={{width:30,height:30,borderRadius:'50%',background:'rgba(245,158,11,0.15)',border:'1px solid rgba(245,158,11,0.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:600,color:'#F59E0B'}}>{init}</div>
+                <div>
+                  <div style={{fontSize:13,fontWeight:500}}>{u.name}</div>
+                  <div style={{fontSize:10,color:'var(--t3)'}}>{u.email}</div>
+                </div>
+                <span style={{marginLeft:'auto',fontSize:10,padding:'2px 7px',borderRadius:4,background:bg,color,fontWeight:500}}>{u.role}</span>
+              </div>
+              <div style={{fontSize:11,color:'var(--t3)'}}>HP: {u.hp||'—'} · Dibuat: {fmtDate(u.createdAt)}</div>
+            </div>
+          })}
+          {!users.length && <div style={{textAlign:'center',padding:24,color:'var(--t3)',fontSize:12}}>Belum ada user</div>}
+        </div>
       </main>
 
       {modal && (
@@ -83,7 +114,7 @@ export default function UsersPage() {
             <div><label style={{fontSize:11,color:'var(--t2)',display:'block',marginBottom:4}}>Nama Lengkap *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} /></div>
             <div><label style={{fontSize:11,color:'var(--t2)',display:'block',marginBottom:4}}>Email *</label><input type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} /></div>
             <div><label style={{fontSize:11,color:'var(--t2)',display:'block',marginBottom:4}}>Password *</label><input type="password" value={form.password} onChange={e=>setForm(f=>({...f,password:e.target.value}))} placeholder="Min 6 karakter" /></div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div className="form-grid-2" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
               <div><label style={{fontSize:11,color:'var(--t2)',display:'block',marginBottom:4}}>Role</label>
                 <select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))}>
                   <option value="ADMIN">Admin</option><option value="KASIR">Kasir</option><option value="MEKANIK">Mekanik</option>

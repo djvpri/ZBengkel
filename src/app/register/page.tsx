@@ -135,7 +135,7 @@ export default function RegisterPage() {
               placeholder="email@bengkel.com"
             />
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
             <div>
               <label style={{ fontSize: 11, color: '#94A3B8', display: 'block', marginBottom: 4 }}>Password *</label>
               <input

@@ -6,7 +6,7 @@ import Button from '@/components/Button'
 
 interface CetakNotaProps {
   transaksi: any
-  tenant: any
+  tenant?: any
   onClose: () => void
 }
 
@@ -16,24 +16,29 @@ export default function CetakNota({ transaksi, tenant, onClose }: CetakNotaProps
   const fmt = (n: number) => 'Rp ' + Math.round(n).toLocaleString('id-ID')
   const tgl = (d: string) => new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
 
+  const bengkelNama = tenant?.namaToko || process.env.NEXT_PUBLIC_BENGKEL_NAMA || 'BENGKEL POS'
+  const bengkelAlamat = tenant?.alamat || process.env.NEXT_PUBLIC_BENGKEL_ALAMAT || ''
+  const bengkelTelp = tenant?.telepon || process.env.NEXT_PUBLIC_BENGKEL_TELP || '-'
+
   const handleCetak = () => {
     const printWindow = window.open('', '_blank', 'width=400,height=600')
     if (!printWindow) return
 
     const items = transaksi.items || []
-    const lines = [
-      '══════════════════════════',
-      `    ${(tenant?.namaToko || 'BENGKEL POS').toUpperCase()}`,
-      `    ${tenant?.alamat || ''}`,
-      `    Telp: ${tenant?.telepon || '-'}`,
-      '══════════════════════════',
-      '',
-      `No: ${transaksi.nomorTrx}`,
-      `Tanggal: ${tgl(transaksi.createdAt)}`,
-      `Mekanik: ${transaksi.workOrder?.mekaniks?.[0]?.mekanik?.nama || '-'}`,
-      `Kendaraan: ${transaksi.workOrder?.kendaraan?.plat || '-'} (${transaksi.workOrder?.kendaraan?.jenis || '-'})`,
-      '──────────────────────────',
-    ]
+    const diskonDiskon = transaksi.diskon > 0 ? transaksi.subtotal * transaksi.diskon / 100 : 0
+
+    const lines: string[] = []
+    lines.push('══════════════════════════')
+    lines.push(`    ${bengkelNama.toUpperCase()}`)
+    if (bengkelAlamat) lines.push(`    ${bengkelAlamat}`)
+    lines.push(`    Telp: ${bengkelTelp}`)
+    lines.push('══════════════════════════')
+    lines.push('')
+    lines.push(`No: ${transaksi.nomorTrx}`)
+    lines.push(`Tanggal: ${tgl(transaksi.createdAt)}`)
+    lines.push(`Mekanik: ${transaksi.workOrder?.mekaniks?.[0]?.mekanik?.nama || '-'}`)
+    lines.push(`Kendaraan: ${transaksi.workOrder?.kendaraan?.plat || '-'} (${transaksi.workOrder?.kendaraan?.jenis || '-'})`)
+    lines.push('──────────────────────────')
 
     items.forEach((item: any) => {
       lines.push(`${item.nama}`)
@@ -42,9 +47,12 @@ export default function CetakNota({ transaksi, tenant, onClose }: CetakNotaProps
 
     lines.push('──────────────────────────')
     lines.push(`Subtotal: ${fmt(transaksi.subtotal)}`)
-    if (transaksi.diskon > 0) lines.push(`Diskon: ${fmt(transaksi.subtotal * transaksi.diskon / 100)}`)
+    if (diskonDiskon > 0) lines.push(`Diskon: ${fmt(diskonDiskon)}`)
     lines.push(`TOTAL: ${fmt(transaksi.total)}`)
     lines.push(`Bayar: ${transaksi.metode}`)
+    if (transaksi.kembalian != null && transaksi.kembalian !== undefined) {
+      lines.push(`Kembalian: ${fmt(transaksi.kembalian)}`)
+    }
     lines.push('──────────────────────────')
     lines.push('')
     lines.push('Terima kasih atas kunjungan')
@@ -57,7 +65,7 @@ export default function CetakNota({ transaksi, tenant, onClose }: CetakNotaProps
       <style>
         body { font-family: 'Courier New', monospace; font-size: 12px; padding: 16px; max-width: 300px; margin: 0 auto; }
         pre { white-space: pre-wrap; margin: 0; }
-        @media print { body { padding: 0; } }
+        @media print { body { padding: 0; max-width: none; } }
       </style></head>
       <body><pre>${lines.join('\n')}</pre></body></html>
     `)
@@ -78,12 +86,12 @@ export default function CetakNota({ transaksi, tenant, onClose }: CetakNotaProps
         background: '#1A2332', borderRadius: 8, padding: 20,
         fontFamily: "'Courier New', monospace", fontSize: 12, lineHeight: 1.6,
         border: '1px dashed rgba(255,255,255,0.15)',
-        whiteSpace: 'pre-wrap',
+        whiteSpace: 'pre-wrap', overflowX: 'auto',
       }}>
         <div style={{ textAlign: 'center', marginBottom: 8 }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>{(tenant?.namaToko || 'BENGKEL POS').toUpperCase()}</div>
-          <div style={{ color: 'var(--t3)', fontSize: 11 }}>{tenant?.alamat || ''}</div>
-          <div style={{ color: 'var(--t3)', fontSize: 11 }}>Telp: {tenant?.telepon || '-'}</div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{bengkelNama.toUpperCase()}</div>
+          {bengkelAlamat && <div style={{ color: 'var(--t3)', fontSize: 11 }}>{bengkelAlamat}</div>}
+          <div style={{ color: 'var(--t3)', fontSize: 11 }}>Telp: {bengkelTelp}</div>
         </div>
         <div style={{ borderTop: '1px dashed rgba(255,255,255,0.15)', margin: '8px 0' }} />
         <div style={{ fontSize: 11, color: 'var(--t2)' }}>

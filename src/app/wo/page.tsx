@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import Sidebar from '@/components/Sidebar'
+import Sidebar, { HamburgerButton } from '@/components/Sidebar'
 import Modal from '@/components/Modal'
 import Toast from '@/components/Toast'
 import { rp, fmtDateTime } from '@/lib/utils'
@@ -31,6 +31,15 @@ export default function WOPage() {
   const [showDetail, setShowDetail] = useState<any>(null)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ plat: '', jenis: 'MOTOR', merk: '', tipe: '', tahun: '', warna: '', pemilik: '', hp: '', alamat: '', keluhan: '', catatan: '', estimasi: '', mekanikIds: [] as string[] })
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   useEffect(() => { if (status === 'unauthenticated') router.push('/login') }, [status, router])
 
@@ -39,32 +48,32 @@ export default function WOPage() {
     const params = new URLSearchParams()
     if (search) params.set('search', search)
     if (filterStatus) params.set('status', filterStatus)
-    const data = await fetch(`/api/wo?${params}`).then(r => r.json())
+    const data = await fetch(`/api/wo?${params}`, { credentials: 'include' }).then(r => r.json())
     setWOs(Array.isArray(data) ? data : [])
     setLoading(false)
   }, [search, filterStatus])
 
-  useEffect(() => { if (status === 'authenticated') { load(); fetch('/api/mekanik').then(r => r.json()).then(d => setMekaniks(Array.isArray(d) ? d : [])) } }, [status, load])
+  useEffect(() => { if (status === 'authenticated') { load(); fetch('/api/mekanik', { credentials: 'include' }).then(r => r.json()).then(d => setMekaniks(Array.isArray(d) ? d : [])) } }, [status, load])
 
   const toggleMek = (id: string) => setForm(f => ({ ...f, mekanikIds: f.mekanikIds.includes(id) ? f.mekanikIds.filter(x => x !== id) : [...f.mekanikIds, id] }))
 
   const saveWO = async () => {
     if (!form.plat || !form.pemilik || !form.keluhan) { setToast({ msg: 'Plat, pemilik, dan keluhan wajib!', type: 'error' }); return }
     setSaving(true)
-    const res = await fetch('/api/wo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+    const res = await fetch('/api/wo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(form) })
     setSaving(false)
     if (res.ok) { setShowModal(false); load(); setToast({ msg: 'Work Order berhasil dibuat!', type: 'success' }) }
     else { const e = await res.json(); setToast({ msg: e.error || 'Gagal menyimpan', type: 'error' }) }
   }
 
   const updateStatus = async (id: string, status: string) => {
-    await fetch(`/api/wo/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
+    await fetch(`/api/wo/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ status }) })
     load(); setShowDetail(null); setToast({ msg: `Status diubah ke ${status}`, type: 'success' })
   }
 
   const deleteWO = async (id: string) => {
     if (!confirm('Hapus work order ini?')) return
-    await fetch(`/api/wo/${id}`, { method: 'DELETE' })
+    await fetch(`/api/wo/${id}`, { method: 'DELETE', credentials: 'include' })
     load(); setToast({ msg: 'Work Order dihapus', type: 'success' })
   }
 
@@ -75,18 +84,19 @@ export default function WOPage() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <Sidebar />
-      <main style={{ flex: 1, overflow: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h1 style={{ fontSize: 18, fontWeight: 600 }}>Work Order</h1>
+      {isMobile && <HamburgerButton onClick={() => setSidebarOpen(!sidebarOpen)} />}
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <main style={{ flex: 1, overflow: 'auto', padding: isMobile ? 12 : 20, paddingTop: isMobile ? 52 : 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <h1 style={{ fontSize: isMobile ? 16 : 18, fontWeight: 600 }}>Work Order</h1>
           {(role === 'ADMIN' || role === 'KASIR') && (
             <Btn variant="amber" onClick={() => { setForm({ plat:'',jenis:'MOTOR',merk:'',tipe:'',tahun:'',warna:'',pemilik:'',hp:'',alamat:'',keluhan:'',catatan:'',estimasi:'',mekanikIds:[] }); setShowModal(true) }}>+ WO Baru</Btn>
           )}
         </div>
 
-        <div style={{ display: 'flex', gap: 10 }}>
-          <input style={{ flex: 1 }} placeholder="Cari plat / pemilik..." value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && load()} />
-          <select style={{ width: 140 }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input style={{ flex: 1, minWidth: 120 }} placeholder="Cari plat / pemilik..." value={search} onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && load()} />
+          <select style={{ width: isMobile ? '100%' : 140 }} value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
             <option value="">Semua Status</option>
             <option value="ANTRI">Antri</option>
             <option value="PROSES">Proses</option>
@@ -96,48 +106,76 @@ export default function WOPage() {
           <Btn onClick={load}>Cari</Btn>
         </div>
 
-        <div style={{ background: 'var(--bg2)', borderRadius: 12, border: '0.5px solid var(--border)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>{['No. WO','Kendaraan','Pemilik','Mekanik','Keluhan','Masuk','Status','Aksi'].map(h => (
-                <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontSize: 10, color: 'var(--t3)', borderBottom: '0.5px solid var(--border)', textTransform: 'uppercase' }}>{h}</th>
-              ))}</tr>
-            </thead>
-            <tbody>
-              {loading ? <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--t3)' }}>Memuat...</td></tr>
-              : wos.length === 0 ? <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--t3)' }}>Tidak ada data</td></tr>
-              : wos.map(w => (
-                <tr key={w.id} style={{ borderBottom: '0.5px solid var(--border)' }}>
-                  <td style={{ padding: '9px 12px', fontSize: 11, color: '#F59E0B' }}>{w.nomorWO}</td>
-                  <td style={{ padding: '9px 12px' }}>
-                    <div style={{ fontWeight: 500, fontSize: 12 }}>{w.kendaraan?.plat}</div>
-                    <div style={{ fontSize: 10, color: 'var(--t3)' }}>{w.kendaraan?.jenis} · {w.kendaraan?.tipe || '—'}</div>
-                  </td>
-                  <td style={{ padding: '9px 12px', fontSize: 12 }}>{w.kendaraan?.pemilik}<br/><span style={{ fontSize: 10, color: 'var(--t3)' }}>{w.kendaraan?.hp}</span></td>
-                  <td style={{ padding: '9px 12px', fontSize: 11, color: 'var(--t2)' }}>{w.mekaniks?.map((wm: any) => wm.mekanik?.nama).join(', ') || '—'}</td>
-                  <td style={{ padding: '9px 12px', fontSize: 11, color: 'var(--t2)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.keluhan}</td>
-                  <td style={{ padding: '9px 12px', fontSize: 10, color: 'var(--t3)' }}>{fmtDateTime(w.waktuMasuk)}</td>
-                  <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: (statusColor[w.status]||[])[0], color: (statusColor[w.status]||[])[1], fontWeight: 500 }}>{w.status}</span></td>
-                  <td style={{ padding: '9px 12px' }}>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <Btn onClick={() => setShowDetail(w)}>👁</Btn>
-                      {w.status === 'ANTRI' && <Btn variant="amber" onClick={() => updateStatus(w.id, 'PROSES')}>▶</Btn>}
-                      {w.status === 'PROSES' && <Btn variant="success" onClick={() => updateStatus(w.id, 'SELESAI')}>✓</Btn>}
-                      {w.status === 'SELESAI' && <Btn variant="blue" onClick={() => router.push(`/kasir?woId=${w.id}`)}>💰</Btn>}
-                      {role === 'ADMIN' && <Btn variant="danger" onClick={() => deleteWO(w.id)}>🗑</Btn>}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Desktop table */}
+        <div className="hide-mobile" style={{ background: 'var(--bg2)', borderRadius: 12, border: '0.5px solid var(--border)', overflow: 'hidden' }}>
+          <div className="scroll-x">
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>{['No. WO','Kendaraan','Pemilik','Mekanik','Keluhan','Masuk','Status','Aksi'].map(h => (
+                  <th key={h} style={{ padding: '9px 12px', textAlign: 'left', fontSize: 10, color: 'var(--t3)', borderBottom: '0.5px solid var(--border)', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}</tr>
+              </thead>
+              <tbody>
+                {loading ? <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--t3)' }}>Memuat...</td></tr>
+                : wos.length === 0 ? <tr><td colSpan={8} style={{ padding: 24, textAlign: 'center', color: 'var(--t3)' }}>Tidak ada data</td></tr>
+                : wos.map(w => (
+                  <tr key={w.id} style={{ borderBottom: '0.5px solid var(--border)' }}>
+                    <td style={{ padding: '9px 12px', fontSize: 11, color: '#F59E0B' }}>{w.nomorWO}</td>
+                    <td style={{ padding: '9px 12px' }}>
+                      <div style={{ fontWeight: 500, fontSize: 12 }}>{w.kendaraan?.plat}</div>
+                      <div style={{ fontSize: 10, color: 'var(--t3)' }}>{w.kendaraan?.jenis} · {w.kendaraan?.tipe || '—'}</div>
+                    </td>
+                    <td style={{ padding: '9px 12px', fontSize: 12 }}>{w.kendaraan?.pemilik}<br/><span style={{ fontSize: 10, color: 'var(--t3)' }}>{w.kendaraan?.hp}</span></td>
+                    <td style={{ padding: '9px 12px', fontSize: 11, color: 'var(--t2)' }}>{w.mekaniks?.map((wm: any) => wm.mekanik?.nama).join(', ') || '—'}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 11, color: 'var(--t2)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{w.keluhan}</td>
+                    <td style={{ padding: '9px 12px', fontSize: 10, color: 'var(--t3)' }}>{fmtDateTime(w.waktuMasuk)}</td>
+                    <td style={{ padding: '9px 12px' }}><span style={{ fontSize: 10, padding: '3px 8px', borderRadius: 4, background: (statusColor[w.status]||[])[0], color: (statusColor[w.status]||[])[1], fontWeight: 500 }}>{w.status}</span></td>
+                    <td style={{ padding: '9px 12px' }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <Btn onClick={() => setShowDetail(w)}>👁</Btn>
+                        {w.status === 'ANTRI' && <Btn variant="amber" onClick={() => updateStatus(w.id, 'PROSES')}>▶</Btn>}
+                        {w.status === 'PROSES' && <Btn variant="success" onClick={() => updateStatus(w.id, 'SELESAI')}>✓</Btn>}
+                        {w.status === 'SELESAI' && <Btn variant="blue" onClick={() => router.push(`/kasir?woId=${w.id}`)}>💰</Btn>}
+                        {role === 'ADMIN' && <Btn variant="danger" onClick={() => deleteWO(w.id)}>🗑</Btn>}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Mobile cards */}
+        <div className="hide-desktop">
+          {loading ? <div style={{ textAlign: 'center', padding: 24, color: 'var(--t3)' }}>Memuat...</div>
+          : wos.length === 0 ? <div style={{ textAlign: 'center', padding: 24, color: 'var(--t3)' }}>Tidak ada data</div>
+          : wos.map(w => (
+            <div key={w.id} style={{ background: 'var(--bg2)', borderRadius: 10, border: '0.5px solid var(--border)', padding: 12, marginBottom: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: 12, color: '#F59E0B', fontWeight: 600 }}>{w.nomorWO}</span>
+                <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 4, background: (statusColor[w.status]||[])[0], color: (statusColor[w.status]||[])[1], fontWeight: 500 }}>{w.status}</span>
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>{w.kendaraan?.plat} · {w.kendaraan?.jenis}</div>
+              <div style={{ fontSize: 11, color: 'var(--t2)', marginTop: 2 }}>{w.kendaraan?.pemilik}</div>
+              <div style={{ fontSize: 11, color: 'var(--t3)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Keluhan: {w.keluhan}</div>
+              <div style={{ fontSize: 10, color: 'var(--t3)', marginTop: 4 }}>👷 {w.mekaniks?.map((wm: any) => wm.mekanik?.nama).join(', ') || '—'}</div>
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                <Btn onClick={() => setShowDetail(w)}>Detail</Btn>
+                {w.status === 'ANTRI' && <Btn variant="amber" onClick={() => updateStatus(w.id, 'PROSES')}>Proses</Btn>}
+                {w.status === 'PROSES' && <Btn variant="success" onClick={() => updateStatus(w.id, 'SELESAI')}>Selesai</Btn>}
+                {w.status === 'SELESAI' && <Btn variant="blue" onClick={() => router.push(`/kasir?woId=${w.id}`)}>Kasir</Btn>}
+                {role === 'ADMIN' && <Btn variant="danger" onClick={() => deleteWO(w.id)}>Hapus</Btn>}
+              </div>
+            </div>
+          ))}
         </div>
       </main>
 
       {showModal && (
         <Modal title="Work Order Baru" onClose={() => setShowModal(false)} wide
           footer={<><Btn onClick={() => setShowModal(false)}>Batal</Btn><Btn variant="amber" onClick={saveWO} disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan WO'}</Btn></>}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div><label style={{ fontSize: 11, color: 'var(--t2)', display: 'block', marginBottom: 4 }}>No. Plat *</label><input value={form.plat} onChange={e => setForm(f => ({...f, plat: e.target.value.toUpperCase()}))} placeholder="KB 1234 AB" /></div>
             <div><label style={{ fontSize: 11, color: 'var(--t2)', display: 'block', marginBottom: 4 }}>Jenis Kendaraan *</label>
               <select value={form.jenis} onChange={e => setForm(f => ({...f, jenis: e.target.value}))}>
@@ -145,17 +183,17 @@ export default function WOPage() {
               </select>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div className="form-grid-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div><label style={{ fontSize: 11, color: 'var(--t2)', display: 'block', marginBottom: 4 }}>Merk</label><input value={form.merk} onChange={e => setForm(f => ({...f, merk: e.target.value}))} placeholder="Honda" /></div>
             <div><label style={{ fontSize: 11, color: 'var(--t2)', display: 'block', marginBottom: 4 }}>Tipe</label><input value={form.tipe} onChange={e => setForm(f => ({...f, tipe: e.target.value}))} placeholder="Beat 2021" /></div>
             <div><label style={{ fontSize: 11, color: 'var(--t2)', display: 'block', marginBottom: 4 }}>Tahun</label><input type="number" value={form.tahun} onChange={e => setForm(f => ({...f, tahun: e.target.value}))} placeholder="2021" /></div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
             <div><label style={{ fontSize: 11, color: 'var(--t2)', display: 'block', marginBottom: 4 }}>Nama Pemilik *</label><input value={form.pemilik} onChange={e => setForm(f => ({...f, pemilik: e.target.value}))} placeholder="Nama lengkap" /></div>
             <div><label style={{ fontSize: 11, color: 'var(--t2)', display: 'block', marginBottom: 4 }}>No. HP</label><input value={form.hp} onChange={e => setForm(f => ({...f, hp: e.target.value}))} placeholder="08xxxxxxxxxx" /></div>
           </div>
           <div style={{ marginBottom: 10 }}><label style={{ fontSize: 11, color: 'var(--t2)', display: 'block', marginBottom: 4 }}>Keluhan / Servis yang diminta *</label><textarea value={form.keluhan} onChange={e => setForm(f => ({...f, keluhan: e.target.value}))} rows={2} placeholder="Deskripsikan keluhan..." /></div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+          <div className="form-grid-2" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
             <div><label style={{ fontSize: 11, color: 'var(--t2)', display: 'block', marginBottom: 4 }}>Catatan Tambahan</label><input value={form.catatan} onChange={e => setForm(f => ({...f, catatan: e.target.value}))} placeholder="Opsional" /></div>
             <div><label style={{ fontSize: 11, color: 'var(--t2)', display: 'block', marginBottom: 4 }}>Estimasi Biaya (Rp)</label><input type="number" value={form.estimasi} onChange={e => setForm(f => ({...f, estimasi: e.target.value}))} placeholder="0" /></div>
           </div>
@@ -174,14 +212,14 @@ export default function WOPage() {
       {showDetail && (
         <Modal title={showDetail.nomorWO} onClose={() => setShowDetail(null)} wide
           footer={
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <Btn onClick={() => setShowDetail(null)}>Tutup</Btn>
               {showDetail.status === 'ANTRI' && <Btn variant="amber" onClick={() => updateStatus(showDetail.id, 'PROSES')}>▶ Mulai Proses</Btn>}
               {showDetail.status === 'PROSES' && <Btn variant="success" onClick={() => updateStatus(showDetail.id, 'SELESAI')}>✓ Tandai Selesai</Btn>}
               {showDetail.status === 'SELESAI' && <Btn variant="blue" onClick={() => { setShowDetail(null); router.push(`/kasir?woId=${showDetail.id}`) }}>💰 Proses Kasir</Btn>}
             </div>
           }>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
             <div>
               <div style={{ fontSize: 10, color: 'var(--t3)', marginBottom: 3 }}>Kendaraan</div>
               <div style={{ fontWeight: 600, fontSize: 14, color: '#F59E0B' }}>{showDetail.kendaraan?.plat}</div>
@@ -198,7 +236,7 @@ export default function WOPage() {
             <div style={{ fontSize: 13 }}>{showDetail.keluhan}</div>
             {showDetail.catatan && <div style={{ fontSize: 11, color: 'var(--t2)', marginTop: 4 }}>📝 {showDetail.catatan}</div>}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16, marginBottom: 14 }}>
             <div>
               <div style={{ fontSize: 10, color: 'var(--t3)', marginBottom: 6 }}>Mekanik yang ditugaskan</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -211,7 +249,7 @@ export default function WOPage() {
               <div style={{ fontSize: 16, fontWeight: 600, color: '#F59E0B' }}>{rp(showDetail.estimasi || 0)}</div>
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 16 }}>
             <div><div style={{ fontSize: 10, color: 'var(--t3)', marginBottom: 3 }}>Masuk</div><div style={{ fontSize: 12 }}>{fmtDateTime(showDetail.waktuMasuk)}</div></div>
             <div><div style={{ fontSize: 10, color: 'var(--t3)', marginBottom: 3 }}>Selesai</div><div style={{ fontSize: 12 }}>{fmtDateTime(showDetail.waktuSelesai)}</div></div>
           </div>

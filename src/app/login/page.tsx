@@ -21,8 +21,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg0)' }}>
-      <div style={{ width: 380, background: 'var(--bg1)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: 36 }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg0)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ width: '100%', maxWidth: 380, background: 'var(--bg1)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: 'clamp(20px, 5vw, 36px)' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <Link href="/landing" style={{ textDecoration: 'none' }}>
             <div style={{ fontSize: 28, marginBottom: 6 }}>🔧</div>
