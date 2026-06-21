@@ -66,7 +66,7 @@ export default function LaporanPage() {
   const dailyData: Record<string, { jumlah: number; omzet: number }> = {}
   if (data?.transaksi) {
     data.transaksi.forEach((t: any) => {
-      const day = new Date(t.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+      const day = t.createdAt ? new Date(t.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
       if (!dailyData[day]) dailyData[day] = { jumlah: 0, omzet: 0 }
       dailyData[day].jumlah++
       dailyData[day].omzet += t.total
