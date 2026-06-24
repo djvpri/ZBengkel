@@ -15,7 +15,7 @@ function SsoContent() {
     signIn('credentials', { ssoToken: token, email: '', password: '', redirect: false })
       .then(res => {
         if (res?.ok) {
-          window.location.replace('https://zbengkel.zomet.my.id/dashboard')
+          window.location.replace('https://zbengkel.zomet.my.id/')
         } else {
           setStatus('error')
           setMsg('Login SSO gagal. Pastikan akun terdaftar di ZBengkel.')
