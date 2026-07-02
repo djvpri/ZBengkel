@@ -2,12 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import prisma from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
-const ADMIN_SECRET = process.env.CROSS_APP_SECRET || 'z-ecosystem-admin-2026'
+// Dual secret support during migration (2026-07-02)
+const NEW_SECRET = process.env.CROSS_APP_SECRET || 'uurclTHL375CiZeWi2g4T3GczU2YNY9I1wzjlsVTgSk'
+const OLD_SECRET = 'z-ecosystem-admin-2026'
+const VALID_SECRETS = [NEW_SECRET, OLD_SECRET]
+
+function isValidSecret(token: string): boolean {
+  return VALID_SECRETS.includes(token)
+}
 
 export async function GET(req: NextRequest) {
   try {
     const authHeader = req.headers.get('authorization')
-    if (authHeader !== `Bearer ${ADMIN_SECRET}`) {
+    const token = authHeader?.replace('Bearer ', '')
+    if (!token || !isValidSecret(token)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -48,7 +56,8 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('authorization')
-    if (authHeader !== `Bearer ${ADMIN_SECRET}`) {
+    const token = authHeader?.replace('Bearer ', '')
+    if (!token || !isValidSecret(token)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
