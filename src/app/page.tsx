@@ -1,9 +1,9 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
 import Sidebar, { HamburgerButton } from '@/components/Sidebar'
 import { rp } from '@/lib/utils'
+import LandingPage from './landing/page'
 
 const Card = ({ label, value, icon, color = 'var(--amber)', sub }: any) => (
   <div style={{ background: 'var(--bg2)', borderRadius: 12, border: '0.5px solid var(--border)', padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -34,7 +34,6 @@ const LimitBar = ({ label, current, max, color = 'var(--amber)' }: any) => {
 
 export default function DashboardPage() {
   const { status, data } = useSession()
-  const router = useRouter()
   const [stats, setStats] = useState<any>(null)
   const [tenantInfo, setTenantInfo] = useState<any>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -47,8 +46,6 @@ export default function DashboardPage() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  useEffect(() => { if (status === 'unauthenticated') router.push('/login') }, [status, router])
-
   useEffect(() => {
     if (status !== 'authenticated') return
     fetch('/api/wo', { credentials: 'include' }).then(r => r.json()).then(d => setStats(Array.isArray(d) ? d : []))
@@ -56,6 +53,7 @@ export default function DashboardPage() {
   }, [status])
 
   if (status === 'loading') return null
+  if (status === 'unauthenticated') return <LandingPage />
 
   const woList = Array.isArray(stats) ? stats : []
   const antri = woList.filter((w: any) => w.status === 'ANTRI').length

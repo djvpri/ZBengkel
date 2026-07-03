@@ -15,30 +15,18 @@ const features = [
 
 const plans = [
   {
-    name: 'Free', price: 'Gratis', period: '/bulan',
-    maxWO: '20', maxPart: '50', maxMekanik: '2',
-    features: ['Work Order & Kasir', 'Spare Part (50 item)', '2 Mekanik', 'Laporan Dasar', 'Struk Digital'],
+    name: 'Bulanan', price: 'Rp 100.000', period: '/bulan',
+    catatan: 'Ditagih tiap bulan, berhenti kapan saja',
     highlight: false,
   },
   {
-    name: 'Basic', price: 'Rp 149.000', period: '/bulan',
-    maxWO: '200', maxPart: '500', maxMekanik: '5',
-    features: ['Semua Fitur Free', '200 Work Order/bulan', '500 Spare Part', '5 Mekanik', 'Laporan Detail', 'Cetak PDF', '1 User Kasir'],
-    highlight: false,
-  },
-  {
-    name: 'Pro', price: 'Rp 349.000', period: '/bulan',
-    maxWO: '1.000', maxPart: 'Unlimited', maxMekanik: 'Unlimited',
-    features: ['Semua Fitur Basic', '1.000 Work Order/bulan', 'Spare Part Unlimited', 'Mekanik Unlimited', 'Multi User', 'Laporan Premium', 'Cetak Nota Custom', 'Prioritas Support'],
+    name: 'Tahunan', price: 'Rp 1.000.000', period: '/tahun',
+    catatan: 'Setara Rp 83.333/bulan — hemat 2 bulan',
     highlight: true,
   },
-  {
-    name: 'Enterprise', price: 'Rp 699.000', period: '/bulan',
-    maxWO: 'Unlimited', maxPart: 'Unlimited', maxMekanik: 'Unlimited',
-    features: ['Semua Fitur Pro', 'Work Order Unlimited', 'Semua Unlimited', 'White Label', 'API Access', 'Dedicated Support', 'Custom Integrasi', 'SLA 99.9%'],
-    highlight: false,
-  },
 ]
+
+const fiturSemuaPaket = ['Work Order & Kasir', 'Spare Part & Mekanik Unlimited', 'Laporan Lengkap + Cetak PDF', 'Multi User (Admin/Kasir/Mekanik)', 'Struk Digital & Cetak Ulang']
 
 export default function LandingPage() {
   return (
@@ -52,7 +40,7 @@ export default function LandingPage() {
         <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <Link href="/login" style={{ color: '#94A3B8', fontSize: 13, textDecoration: 'none' }}>Masuk</Link>
           <Link href="/register" style={{ background: '#F59E0B', color: '#0F1623', padding: '8px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-            Daftar Gratis
+            Daftar Sekarang
           </Link>
         </div>
       </nav>
@@ -66,11 +54,11 @@ export default function LandingPage() {
           Kelola Bengkel Lebih <span style={{ color: '#F59E0B' }}>Mudah</span> & <span style={{ color: '#34D399' }}>Profesional</span>
         </h1>
         <p style={{ fontSize: 16, color: '#94A3B8', lineHeight: 1.6, maxWidth: 600, margin: '0 auto 32px' }}>
-          Sistem manajemen bengkel all-in-one: Work Order, Kasir, Spare Part, Mekanik, dan Laporan. Mulai dari Rp 0/bulan.
+          Sistem manajemen bengkel all-in-one: Work Order, Kasir, Spare Part, Mekanik, dan Laporan. Rp 100.000/bulan.
         </p>
         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
           <Link href="/register" style={{ background: '#F59E0B', color: '#0F1623', padding: '12px 28px', borderRadius: 10, fontSize: 15, fontWeight: 700, textDecoration: 'none' }}>
-            Mulai Gratis →
+            Mulai Sekarang →
           </Link>
           <Link href="/login" style={{ border: '1px solid rgba(255,255,255,0.15)', padding: '12px 28px', borderRadius: 10, fontSize: 15, fontWeight: 500, color: '#94A3B8', textDecoration: 'none' }}>
             Demo Login
@@ -105,7 +93,7 @@ export default function LandingPage() {
       {/* Pricing */}
       <section style={{ padding: '60px 24px', maxWidth: 1100, margin: '0 auto' }}>
         <h2 style={{ fontSize: 28, fontWeight: 700, textAlign: 'center', marginBottom: 8 }}>Harga Terjangkau</h2>
-        <p style={{ textAlign: 'center', color: '#94A3B8', fontSize: 14, marginBottom: 40 }}>Mulai gratis, upgrade sesuai kebutuhan</p>
+        <p style={{ textAlign: 'center', color: '#94A3B8', fontSize: 14, marginBottom: 40 }}>Satu paket, semua fitur — pilih bulanan atau tahunan</p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 20, alignItems: 'start' }}>
           {plans.map(p => (
             <div key={p.name} style={{
@@ -115,12 +103,13 @@ export default function LandingPage() {
             }}>
               {p.highlight && <div style={{ position: 'absolute', top: -12, left: '50%', transform: 'translateX(-50%)', background: '#F59E0B', color: '#0F1623', padding: '4px 12px', borderRadius: 10, fontSize: 10, fontWeight: 700 }}>POPULER</div>}
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>{p.name}</div>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 4 }}>
                 <span style={{ fontSize: 24, fontWeight: 800, color: '#F59E0B' }}>{p.price}</span>
                 <span style={{ fontSize: 12, color: '#64748B' }}>{p.period}</span>
               </div>
+              <div style={{ fontSize: 11, color: '#64748B', marginBottom: 16 }}>{p.catatan}</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 24 }}>
-                {p.features.map((f, i) => (
+                {fiturSemuaPaket.map((f, i) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#CBD5E1' }}>
                     <span style={{ color: '#34D399' }}>✓</span>{f}
                   </div>
@@ -134,7 +123,7 @@ export default function LandingPage() {
                 color: p.highlight ? '#0F1623' : '#94A3B8',
                 textDecoration: 'none',
               }}>
-                {p.price === 'Gratis' ? 'Mulai Gratis' : 'Pilih Plan'}
+                Pilih {p.name}
               </Link>
             </div>
           ))}
@@ -144,7 +133,7 @@ export default function LandingPage() {
       {/* CTA */}
       <section style={{ textAlign: 'center', padding: '60px 24px 80px' }}>
         <h2 style={{ fontSize: 28, fontWeight: 700, marginBottom: 12 }}>Siap Mengelola Bengkel?</h2>
-        <p style={{ color: '#94A3B8', fontSize: 14, marginBottom: 28 }}>Daftar gratis dalam 30 detik, tidak perlu kartu kredit</p>
+        <p style={{ color: '#94A3B8', fontSize: 14, marginBottom: 28 }}>Rp 100.000/bulan atau Rp 1.000.000/tahun. Batal kapan saja.</p>
         <Link href="/register" style={{ background: '#F59E0B', color: '#0F1623', padding: '14px 32px', borderRadius: 10, fontSize: 16, fontWeight: 700, textDecoration: 'none', display: 'inline-block' }}>
           Daftar Sekarang →
         </Link>
