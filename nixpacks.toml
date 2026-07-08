@@ -1,2 +1,5 @@
 [phases.setup]
 nixPkgs = ["nodejs_20"]
+
+[phases.build]
+cmds = ["npm ci", "DATABASE_URL='postgresql://dummy:dummy@localhost/dummy' npm run build"]
