@@ -89,3 +89,5 @@ npm run build  →  prisma generate + next build
 npm start      →  next start
 ```
 # redeploy
+-e 
+<!-- Auto-rebuild trigger: Thu Jul  9 02:29:27 UTC 2026 -->
